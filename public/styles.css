@@ -1,0 +1,249 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f5f6fa;
+  --panel: #ffffff;
+  --accent: #3273dc;
+  --connected: #2ecc71;
+  --disconnected: #e74c3c;
+  --text: #2d3436;
+  --muted: #636e72;
+  font-family: 'Segoe UI', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header,
+footer {
+  background: var(--panel);
+  padding: 1.5rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.8rem;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.status-cards {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.card {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--muted);
+}
+
+.card p {
+  font-size: 2rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.card.connected p {
+  color: var(--connected);
+}
+
+.card.disconnected p {
+  color: var(--disconnected);
+}
+
+.panel {
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  padding: 1.25rem;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+button:hover {
+  background: #2759a5;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+#session-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#session-table th,
+#session-table td {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+#session-table tbody tr.status-connected {
+  background: rgba(46, 204, 113, 0.08);
+}
+
+#session-table tbody tr.status-disconnected {
+  background: rgba(231, 76, 60, 0.08);
+}
+
+.process-cell {
+  min-width: 200px;
+}
+
+.process-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.process-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  padding: 0.1rem 0;
+}
+
+.process-row .indicator {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.process-row.running .indicator {
+  background: var(--connected);
+}
+
+.process-row.stopped .indicator {
+  background: var(--disconnected);
+}
+
+.process-row .name {
+  font-weight: 600;
+}
+
+.process-row .state {
+  color: var(--muted);
+}
+
+.process-row.running .state {
+  color: var(--connected);
+}
+
+.process-row.stopped .state {
+  color: var(--disconnected);
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.badge.connected {
+  background: var(--connected);
+}
+
+.badge.disconnected {
+  background: var(--disconnected);
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+form {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+label {
+  font-weight: 600;
+}
+
+input,
+textarea {
+  padding: 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  font-size: 0.95rem;
+}
+
+textarea {
+  resize: vertical;
+}
+
+footer {
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  header,
+  footer {
+    text-align: center;
+  }
+
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
