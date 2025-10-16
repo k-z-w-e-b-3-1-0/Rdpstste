@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RDP監視ダッシュボード</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>リモートデスクトップ監視</h1>
+      <p>ネットワーク内の端末がリモートデスクトップで操作されている状況を可視化します。</p>
+    </header>
+
+    <main>
+      <section class="status-cards" aria-label="接続概要">
+        <article class="card">
+          <h2>総端末数</h2>
+          <p id="total-count">0</p>
+        </article>
+        <article class="card connected">
+          <h2>接続中</h2>
+          <p id="connected-count">0</p>
+        </article>
+        <article class="card disconnected">
+          <h2>切断</h2>
+          <p id="disconnected-count">0</p>
+        </article>
+      </section>
+
+      <section class="panel" aria-label="端末一覧">
+        <div class="panel-header">
+          <h2>端末一覧</h2>
+          <button id="refresh-button" type="button">最新情報に更新</button>
+        </div>
+        <div class="table-wrapper">
+          <table id="session-table">
+            <thead>
+              <tr>
+                <th>端末名</th>
+                <th>IPアドレス</th>
+                <th>利用者</th>
+                <th>リモートユーザー</th>
+                <th>接続元</th>
+                <th>状態</th>
+                <th>最終確認</th>
+                <th>更新</th>
+                <th>監視プロセス</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="端末登録">
+        <h2>端末を登録</h2>
+        <form id="create-form">
+          <div class="form-row">
+            <label for="hostname">端末名 *</label>
+            <input id="hostname" name="hostname" required />
+          </div>
+          <div class="form-row">
+            <label for="ipAddress">IPアドレス *</label>
+            <input id="ipAddress" name="ipAddress" required />
+          </div>
+          <div class="form-row">
+            <label for="username">利用者</label>
+            <input id="username" name="username" />
+          </div>
+          <div class="form-row">
+            <label for="remoteUser">リモートユーザー</label>
+            <input id="remoteUser" name="remoteUser" placeholder="例: corp\\administrator" />
+          </div>
+          <div class="form-row">
+            <label for="remoteHost">接続元ホスト</label>
+            <input id="remoteHost" name="remoteHost" placeholder="例: 10.0.0.20" />
+          </div>
+          <div class="form-row">
+            <label for="expectedProcesses">監視プロセス (カンマ区切り)</label>
+            <input
+              id="expectedProcesses"
+              name="expectedProcesses"
+              placeholder="例: mstsc.exe, custom-tool.exe"
+            />
+          </div>
+          <div class="form-row">
+            <label for="notes">備考</label>
+            <textarea id="notes" name="notes" rows="2"></textarea>
+          </div>
+          <button type="submit">登録</button>
+        </form>
+      </section>
+
+      <section class="panel" aria-label="API説明">
+        <h2>API連携について</h2>
+        <p>
+          このページは単純な監視ダッシュボードです。端末でスクリプトを実行して
+          <code>POST /api/sessions/{id}/heartbeat</code> にリクエストを送ることで、
+          リモートデスクトップ接続の状態を自動的に更新できます。
+        </p>
+        <pre><code>curl -X POST http://localhost:3000/api/sessions/&lt;id&gt;/heartbeat</code></pre>
+        <p>新規端末登録は以下のコマンドを参考にしてください。</p>
+        <pre><code>curl -X POST http://localhost:3000/api/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hostname": "PC-01",
+    "ipAddress": "192.168.0.10",
+    "username": "tanaka",
+    "remoteUser": "corp\\administrator",
+    "remoteHost": "192.168.100.50",
+    "expectedProcesses": ["mstsc.exe", "custom-tool.exe"]
+  }'</code></pre>
+        <p>
+          自動ハートビートのエンドポイントでは <code>runningProcesses</code> や
+          <code>processStatuses</code> を渡すと、指定したプロセスの起動状況も同時に監視できます。
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <small>&copy; 2024 RDP Monitoring Dashboard</small>
+    </footer>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
