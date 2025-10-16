@@ -1,0 +1,54 @@
+{
+  "sessions": [
+    {
+      "id": "a3c1e8f2-1234-4bcd-9f11-222233334444",
+      "hostname": "PC-01",
+      "ipAddress": "192.168.0.10",
+      "username": "tanaka",
+      "remoteUser": "corp\\administrator",
+      "remoteHost": "10.0.0.5",
+      "status": "connected",
+      "lastUpdated": "2024-05-01T12:30:00.000Z",
+      "lastSeen": "2024-05-01T12:30:00.000Z",
+      "notes": "運用チーム共有端末",
+      "expectedProcesses": [
+        "mstsc.exe",
+        "custom-tool.exe"
+      ],
+      "processStatuses": [
+        {
+          "name": "mstsc.exe",
+          "running": true,
+          "lastChecked": "2024-05-01T12:30:00.000Z"
+        },
+        {
+          "name": "custom-tool.exe",
+          "running": false,
+          "lastChecked": "2024-05-01T12:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "f6d5c4b3-9876-4cba-9fed-111122223333",
+      "hostname": "PC-02",
+      "ipAddress": "192.168.0.11",
+      "username": "suzuki",
+      "remoteUser": "",
+      "remoteHost": "",
+      "status": "disconnected",
+      "lastUpdated": "2024-05-01T11:00:00.000Z",
+      "lastSeen": "2024-05-01T10:55:00.000Z",
+      "notes": "更新待ち",
+      "expectedProcesses": [
+        "backup-agent.exe"
+      ],
+      "processStatuses": [
+        {
+          "name": "backup-agent.exe",
+          "running": false,
+          "lastChecked": "2024-05-01T10:55:00.000Z"
+        }
+      ]
+    }
+  ]
+}

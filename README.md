@@ -67,6 +67,25 @@ curl -X POST http://localhost:3000/api/sessions \
 curl -X POST http://localhost:3000/api/sessions/<id>/heartbeat
 ```
 
+### 例: セッション ID の確認と指定
+
+セッション ID は UUID 形式で発行され、`GET /api/sessions` のレスポンスから取得できます。以下は `data/sessions.sample.json` の例に含まれる ID を使った操作イメージです。
+
+```bash
+# セッション一覧を取得し、ID を確認
+curl http://localhost:3000/api/sessions
+
+# 取得した ID を利用して利用予定通知を送信
+curl -X POST \
+  http://localhost:3000/api/sessions/a3c1e8f2-1234-4bcd-9f11-222233334444/announce
+
+# 同じ ID に対してメモを更新
+curl -X PUT \
+  http://localhost:3000/api/sessions/a3c1e8f2-1234-4bcd-9f11-222233334444 \
+  -H "Content-Type: application/json" \
+  -d '{"notes":"15時からメンテナンス予定"}'
+```
+
 ### 例: リモート端末からの自動ハートビート
 
 監視される端末側には追加インストールを求めない設計です。Windows 標準の PowerShell だけでハートビートを送信し、同時に監視対象プロセスの起動状況も報告できます。
@@ -113,7 +132,7 @@ Invoke-WebRequest -UseBasicParsing \
 
 ## データ保存
 
-セッション情報は `data/sessions.json` に保存されます。Git では追跡していませんが、サーバー起動時に自動生成されます。
+セッション情報は `data/sessions.json` に保存されます。Git では追跡していませんが、サーバー起動時に自動生成されます。サンプル構造を確認したい場合は、リポジトリに含まれている `data/sessions.sample.json` を参照してください。
 
 ## ライセンス
 
