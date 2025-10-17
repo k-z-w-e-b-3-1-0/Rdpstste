@@ -11,6 +11,7 @@
 - API を利用した外部スクリプト連携が可能
 - 監視対象に指定したプロセスの起動有無を可視化
 - リモート接続元端末とユーザー情報を記録して可視化
+- リモートデスクトップで端末が遠隔操作されているかを自動判定して表示
 - 接続検知時に Slack へ通知を送信
 - ダッシュボードからのボタン操作で利用予定を Slack に共有
 
@@ -46,6 +47,8 @@ npm start
 - `runningProcesses` / `processes`: 自動ハートビート用の簡易指定。カンマ区切りまたは配列で現在起動中のプロセス名を送信すると、監視対象リストと突き合わせて稼働状況を判定します。
 - `remoteHost`: リモートデスクトップの接続元端末名や IP を記録する文字列。
 - `remoteUser`: 接続してきたリモートユーザー名を記録する文字列 (例: `corp\\administrator`)。
+- `remoteControlled`: 端末がリモートデスクトップで操作されていると検知した場合は `true` を送ります。未判定やローカル操作のみの場合は省略するか `null` を指定してください。
+- `sessionName`: Windows の `SESSIONNAME` 環境変数など、セッション名を文字列で送ると `RDP-Tcp#` などの値から遠隔操作を自動判定します。
 
 ### 例: 端末の登録
 
@@ -100,12 +103,17 @@ $running = Get-Process |
 $runningList = ($running | ForEach-Object { $_ + ".exe" }) -join ","
 
 $remoteHost = if ($env:CLIENTNAME) { $env:CLIENTNAME } else { $null }
+$sessionName = if ($env:SESSIONNAME) { $env:SESSIONNAME } else { $null }
+$isRemoteSession = if ($sessionName -and $sessionName -like 'RDP-Tcp*') { $true } else { $false }
+$remoteControlled = if ($isRemoteSession) { $true } else { $null }
 
 $payload = @{
   hostname = $env:COMPUTERNAME
   username = $env:USERNAME
   remoteUser = $env:USERNAME
   remoteHost = $remoteHost
+  sessionName = $sessionName
+  remoteControlled = $remoteControlled
   expectedProcesses = ($targetProcesses -join ",")
   runningProcesses = $runningList
 }

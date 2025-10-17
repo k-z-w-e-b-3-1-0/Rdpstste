@@ -42,6 +42,7 @@
                 <th>利用者</th>
                 <th>リモートユーザー</th>
                 <th>接続元</th>
+                <th>遠隔操作</th>
                 <th>状態</th>
                 <th>最終確認</th>
                 <th>更新</th>
@@ -76,6 +77,13 @@
           <div class="form-row">
             <label for="remoteHost">接続元ホスト</label>
             <input id="remoteHost" name="remoteHost" placeholder="例: 10.0.0.20" />
+          </div>
+          <div class="form-row">
+            <label for="remoteControlled">遠隔操作状態</label>
+            <select id="remoteControlled" name="remoteControlled">
+              <option value="">自動判定 / 未指定</option>
+              <option value="true">遠隔操作中</option>
+            </select>
           </div>
           <div class="form-row">
             <label for="expectedProcesses">監視プロセス (カンマ区切り)</label>

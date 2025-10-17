@@ -41,6 +41,13 @@ function formatRelative(isoString) {
   return `${diffDays}日前`;
 }
 
+function renderRemoteControlState(value) {
+  if (value === true) {
+    return '<span class="badge remote">遠隔操作中</span>';
+  }
+  return '<span class="badge unknown">未判定</span>';
+}
+
 async function request(url, options = {}) {
   const response = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -72,12 +79,14 @@ function renderSessions(sessions) {
       const tr = document.createElement('tr');
       tr.classList.add(`status-${session.status}`);
       const processCellHtml = renderProcessCell(session);
+      const remoteControlHtml = renderRemoteControlState(session.remoteControlled);
       tr.innerHTML = `
         <td>${escapeHtml(session.hostname ?? '')}</td>
         <td>${escapeHtml(session.ipAddress ?? '')}</td>
         <td>${escapeHtml(session.username ?? '')}</td>
         <td>${escapeHtml(session.remoteUser ?? '')}</td>
         <td>${escapeHtml(session.remoteHost ?? '')}</td>
+        <td>${remoteControlHtml}</td>
         <td><span class="badge ${session.status}">${session.status === 'connected' ? '接続中' : '切断'}</span></td>
         <td>
           <div>${formatRelative(session.lastSeen)}</div>
@@ -186,6 +195,18 @@ function normalizeProcessNamesInput(value) {
   return Array.from(unique);
 }
 
+function normalizeBooleanInput(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (['true', '1', 'yes', 'y', 'on', 'remote', 'rdp'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'n', 'off', 'local', 'console'].includes(normalized)) return null;
+  if (['null', 'unknown', 'unset'].includes(normalized)) return null;
+  return undefined;
+}
+
 function renderProcessCell(session) {
   const statuses = Array.isArray(session.processStatuses) ? session.processStatuses : [];
   const expected = Array.isArray(session.expectedProcesses) ? session.expectedProcesses : [];
@@ -254,6 +275,14 @@ createForm.addEventListener('submit', async event => {
   const payload = Object.fromEntries(formData.entries());
   if (payload.expectedProcesses) {
     payload.expectedProcesses = normalizeProcessNamesInput(payload.expectedProcesses);
+  }
+  if (payload.remoteControlled !== undefined) {
+    const normalizedRemote = normalizeBooleanInput(payload.remoteControlled);
+    if (normalizedRemote === undefined) {
+      delete payload.remoteControlled;
+    } else {
+      payload.remoteControlled = normalizedRemote;
+    }
   }
   refreshButton.disabled = true;
   try {

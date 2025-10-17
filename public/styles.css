@@ -199,6 +199,15 @@ button.secondary {
   background: var(--disconnected);
 }
 
+.badge.remote {
+  background: #8e44ad;
+}
+
+.badge.unknown {
+  background: var(--muted);
+  color: #fff;
+}
+
 .muted {
   color: var(--muted);
   font-size: 0.8rem;
@@ -221,7 +230,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   padding: 0.6rem;
   border-radius: 6px;
   border: 1px solid rgba(0, 0, 0, 0.15);
