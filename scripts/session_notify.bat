@@ -1,0 +1,108 @@
+@echo off
+setlocal enabledelayedexpansion
+
+REM Configuration
+set "SERVER=http://監視サーバーのアドレス:3000"
+set "ENDPOINT=%SERVER%/api/sessions/auto-heartbeat"
+set "TARGET_PROCESSES=mstsc.exe custom-tool.exe"
+
+REM Build comma-separated list of expected processes
+set "EXPECTED_PROCESSES="
+for %%P in (%TARGET_PROCESSES%) do (
+    if defined EXPECTED_PROCESSES (
+        set "EXPECTED_PROCESSES=!EXPECTED_PROCESSES!,%%P"
+    ) else (
+        set "EXPECTED_PROCESSES=%%P"
+    )
+)
+
+REM Detect running target processes
+set "RUNNING_PROCESSES="
+for %%P in (%TARGET_PROCESSES%) do (
+    set "FOUND="
+    for /f "usebackq tokens=1 delims=," %%R in (`tasklist /FI "IMAGENAME eq %%P" /FO CSV /NH 2^>NUL`) do (
+        set "LINE=%%~R"
+        if /I not "!LINE:~0,5!"=="INFO:" (
+            set "FOUND=1"
+        )
+    )
+    if defined FOUND (
+        if defined RUNNING_PROCESSES (
+            set "RUNNING_PROCESSES=!RUNNING_PROCESSES!,%%P"
+        ) else (
+            set "RUNNING_PROCESSES=%%P"
+        )
+    )
+)
+if not defined RUNNING_PROCESSES set "RUNNING_PROCESSES="
+
+REM Collect session metadata
+if defined CLIENTNAME (
+    set "REMOTE_HOST=%CLIENTNAME%"
+) else (
+    set "REMOTE_HOST="
+)
+
+if defined SESSIONNAME (
+    set "SESSION_NAME=%SESSIONNAME%"
+) else (
+    set "SESSION_NAME="
+)
+
+set "REMOTE_CONTROLLED=null"
+if defined SESSION_NAME (
+    set "PREFIX=!SESSION_NAME:~0,7!"
+    if /I "!PREFIX!"=="RDP-Tcp" (
+        set "REMOTE_CONTROLLED=true"
+    )
+)
+
+REM Prepare JSON payload file
+set "TEMP_PAYLOAD=%TEMP%\session_payload_%RANDOM%%RANDOM%.json"
+(
+    echo {
+    echo   "hostname": "%COMPUTERNAME%",
+    echo   "username": "%USERNAME%",
+    echo   "remoteUser": "%USERNAME%",
+) > "%TEMP_PAYLOAD%"
+
+if defined REMOTE_HOST (
+    >> "%TEMP_PAYLOAD%" echo   "remoteHost": "%REMOTE_HOST%",
+) else (
+    >> "%TEMP_PAYLOAD%" echo   "remoteHost": null,
+)
+
+if defined SESSION_NAME (
+    >> "%TEMP_PAYLOAD%" echo   "sessionName": "%SESSION_NAME%",
+) else (
+    >> "%TEMP_PAYLOAD%" echo   "sessionName": null,
+)
+
+if /I "%REMOTE_CONTROLLED%"=="true" (
+    >> "%TEMP_PAYLOAD%" echo   "remoteControlled": true,
+) else (
+    >> "%TEMP_PAYLOAD%" echo   "remoteControlled": null,
+)
+
+>> "%TEMP_PAYLOAD%" echo   "expectedProcesses": "!EXPECTED_PROCESSES!",
+
+if defined RUNNING_PROCESSES (
+    >> "%TEMP_PAYLOAD%" echo   "runningProcesses": "!RUNNING_PROCESSES!"
+) else (
+    >> "%TEMP_PAYLOAD%" echo   "runningProcesses": ""
+)
+>> "%TEMP_PAYLOAD%" echo }
+
+REM Send heartbeat
+curl -s --fail --show-error -X POST -H "Content-Type: application/json" -d @"%TEMP_PAYLOAD%" "%ENDPOINT%"
+set "CURL_EXIT=%ERRORLEVEL%"
+
+del "%TEMP_PAYLOAD%" >NUL 2>&1
+
+if not "%CURL_EXIT%"=="0" (
+    echo Failed to send session heartbeat. Curl exited with code %CURL_EXIT%.
+    exit /b %CURL_EXIT%
+)
+
+echo Session heartbeat sent successfully.
+endlocal
