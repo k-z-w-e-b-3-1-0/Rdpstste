@@ -182,20 +182,41 @@ button.secondary {
   color: var(--disconnected);
 }
 
-.badge {
-  display: inline-block;
-  border-radius: 999px;
-  padding: 0.2rem 0.75rem;
-  font-size: 0.8rem;
+.badge { 
+  display: inline-block; 
+  border-radius: 999px; 
+  padding: 0.2rem 0.75rem; 
+  font-size: 0.8rem; 
+  font-weight: 600; 
+  color: #fff; 
+}
+
+.hostname-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.hostname-cell .hostname {
   font-weight: 600;
-  color: #fff;
 }
 
-.badge.connected {
-  background: var(--connected);
+.remote-host-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
-.badge.disconnected {
+.remote-host-cell .ip {
+  font-weight: 600;
+}
+
+.badge.connected { 
+  background: var(--connected); 
+} 
+
+.badge.disconnected { 
   background: var(--disconnected);
 }
 
