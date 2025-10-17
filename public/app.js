@@ -48,6 +48,21 @@ function renderRemoteControlState(value) {
   return '<span class="badge unknown">未判定</span>';
 }
 
+function renderRemoteHostCell(session) {
+  const ip = session.remoteHostIpAddress ? escapeHtml(session.remoteHostIpAddress) : '';
+  const host = session.remoteHost ? escapeHtml(session.remoteHost) : '';
+  if (ip && host && ip !== host) {
+    return `<div class="remote-host-cell"><span class="ip">${ip}</span><small class="muted">${host}</small></div>`;
+  }
+  if (ip) {
+    return ip;
+  }
+  if (host) {
+    return `<span class="muted">${host}</span>`;
+  }
+  return '<span class="muted">-</span>';
+}
+
 async function request(url, options = {}) {
   const response = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -80,14 +95,21 @@ function renderSessions(sessions) {
       tr.classList.add(`status-${session.status}`);
       const processCellHtml = renderProcessCell(session);
       const remoteControlHtml = renderRemoteControlState(session.remoteControlled);
+      const remoteHostHtml = renderRemoteHostCell(session);
+      const statusBadgeHtml = `<span class="badge ${session.status}">${
+        session.status === 'connected' ? '接続中' : '切断'
+      }</span>`;
       tr.innerHTML = `
-        <td>${escapeHtml(session.hostname ?? '')}</td>
+        <td>
+          <div class="hostname-cell">
+            <span class="hostname">${escapeHtml(session.hostname ?? '')}</span>
+            ${statusBadgeHtml}
+          </div>
+        </td>
         <td>${escapeHtml(session.ipAddress ?? '')}</td>
         <td>${escapeHtml(session.username ?? '')}</td>
-        <td>${escapeHtml(session.remoteUser ?? '')}</td>
-        <td>${escapeHtml(session.remoteHost ?? '')}</td>
+        <td>${remoteHostHtml}</td>
         <td>${remoteControlHtml}</td>
-        <td><span class="badge ${session.status}">${session.status === 'connected' ? '接続中' : '切断'}</span></td>
         <td>
           <div>${formatRelative(session.lastSeen)}</div>
           <small class="muted">${formatDateTime(session.lastSeen)}</small>

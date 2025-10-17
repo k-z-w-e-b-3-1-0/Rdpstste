@@ -17,6 +17,16 @@ $runningList = if ($running) {
 }
 
 $remoteHost = if ($env:CLIENTNAME) { $env:CLIENTNAME } else { $null }
+$remoteHostIpAddress = $null
+try {
+    $rdpConnection = Get-NetTCPConnection -State Established -LocalPort 3389 -ErrorAction Stop |
+        Select-Object -First 1
+    if ($rdpConnection -and $rdpConnection.RemoteAddress) {
+        $remoteHostIpAddress = $rdpConnection.RemoteAddress.ToString()
+    }
+} catch {
+    # 取得に失敗した場合は無視
+}
 $sessionName = if ($env:SESSIONNAME) { $env:SESSIONNAME } else { $null }
 $isRemoteSession = if ($sessionName -and $sessionName -like 'RDP-Tcp*') { $true } else { $false }
 $remoteControlled = if ($isRemoteSession) { $true } else { $null }
@@ -26,6 +36,7 @@ $payload = @{
     username          = $env:USERNAME
     remoteUser        = $env:USERNAME
     remoteHost        = $remoteHost
+    remoteHostIpAddress = $remoteHostIpAddress
     sessionName       = $sessionName
     remoteControlled  = $remoteControlled
     expectedProcesses = ($TargetProcesses -join ",")

@@ -37,6 +37,25 @@ if defined CLIENTNAME (
     set "REMOTE_HOST="
 )
 
+set "REMOTE_HOST_IP="
+set "POWERSHELL_CMD="
+for %%S in (powershell pwsh) do (
+    where %%S >NUL 2>&1
+    if not errorlevel 1 (
+        set "POWERSHELL_CMD=%%S"
+        goto :FOUND_POWERSHELL
+    )
+)
+goto :AFTER_REMOTE_IP_SCAN
+
+:FOUND_POWERSHELL
+for /f "usebackq tokens=*" %%A in (`!POWERSHELL_CMD! -NoProfile -Command "try { $conn = Get-NetTCPConnection -State Established -LocalPort 3389 | Select-Object -First 1; if ($conn) { $conn.RemoteAddress } } catch { }"`) do (
+    set "REMOTE_HOST_IP=%%A"
+    goto :AFTER_REMOTE_IP_SCAN
+)
+
+:AFTER_REMOTE_IP_SCAN
+
 if defined SESSIONNAME (
     set "SESSION_NAME=%SESSIONNAME%"
 ) else (
@@ -64,6 +83,12 @@ if defined REMOTE_HOST (
     >> "%TEMP_PAYLOAD%" echo   "remoteHost": "%REMOTE_HOST%",
 ) else (
     >> "%TEMP_PAYLOAD%" echo   "remoteHost": null,
+)
+
+if defined REMOTE_HOST_IP (
+    >> "%TEMP_PAYLOAD%" echo   "remoteHostIpAddress": "%REMOTE_HOST_IP%",
+) else (
+    >> "%TEMP_PAYLOAD%" echo   "remoteHostIpAddress": null,
 )
 
 if defined SESSION_NAME (

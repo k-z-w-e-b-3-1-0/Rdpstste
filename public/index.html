@@ -40,10 +40,8 @@
                 <th>端末名</th>
                 <th>IPアドレス</th>
                 <th>利用者</th>
-                <th>リモートユーザー</th>
-                <th>接続元</th>
+                <th>アクセス元IP</th>
                 <th>遠隔操作</th>
-                <th>状態</th>
                 <th>最終確認</th>
                 <th>更新</th>
                 <th>監視プロセス</th>
@@ -77,6 +75,14 @@
           <div class="form-row">
             <label for="remoteHost">接続元ホスト</label>
             <input id="remoteHost" name="remoteHost" placeholder="例: 10.0.0.20" />
+          </div>
+          <div class="form-row">
+            <label for="remoteHostIpAddress">接続元IPアドレス</label>
+            <input
+              id="remoteHostIpAddress"
+              name="remoteHostIpAddress"
+              placeholder="例: 203.0.113.10"
+            />
           </div>
           <div class="form-row">
             <label for="remoteControlled">遠隔操作状態</label>
@@ -118,6 +124,7 @@
     "username": "tanaka",
     "remoteUser": "corp\\administrator",
     "remoteHost": "192.168.100.50",
+    "remoteHostIpAddress": "198.51.100.23",
     "expectedProcesses": ["mstsc.exe", "custom-tool.exe"]
   }'</code></pre>
         <p>

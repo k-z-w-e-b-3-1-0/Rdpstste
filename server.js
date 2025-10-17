@@ -186,6 +186,7 @@ async function notifySessionEvent(eventType, session, context = {}) {
     `端末: ${session.hostname || '(名称未設定)'} (${session.ipAddress || 'IP不明'})`,
     session.username ? `ローカルユーザー: ${session.username}` : '',
     session.remoteUser ? `リモートユーザー: ${session.remoteUser}` : '',
+    session.remoteHostIpAddress ? `接続元IP: ${session.remoteHostIpAddress}` : '',
     session.remoteHost ? `接続元ホスト: ${session.remoteHost}` : '',
     session.notes ? `備考: ${session.notes}` : '',
     ...extraLines,
@@ -234,6 +235,44 @@ function normalizeProcessStatuses(value) {
   return normalized.filter(entry => entry.name.length > 0);
 }
 
+function isLikelyIp(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(trimmed)) {
+    return trimmed.split('.').every(octet => {
+      const numeric = Number(octet);
+      return Number.isInteger(numeric) && numeric >= 0 && numeric <= 255;
+    });
+  }
+  if (trimmed.includes(':')) {
+    // 簡易的な IPv6 判定。厳密なバリデーションは不要なため、コロンを含むかのみ確認。
+    return /^[0-9a-fA-F:]+$/.test(trimmed);
+  }
+  return false;
+}
+
+function normalizeRemoteHostIp(value, fallbackHost = '') {
+  if (value === null || value === undefined) {
+    if (isLikelyIp(fallbackHost)) {
+      return fallbackHost.trim();
+    }
+    return '';
+  }
+  const asString = String(value).trim();
+  if (asString) {
+    return asString;
+  }
+  if (isLikelyIp(fallbackHost)) {
+    return fallbackHost.trim();
+  }
+  return '';
+}
+
 function getClientIp(req) {
   const forwarded = req.headers['x-forwarded-for'];
   if (forwarded) {
@@ -280,6 +319,11 @@ function loadSessions() {
         }
         if (typeof normalized.remoteHost !== 'string') {
           normalized.remoteHost = normalized.remoteHost ? String(normalized.remoteHost) : '';
+        }
+        if (typeof normalized.remoteHostIpAddress !== 'string') {
+          normalized.remoteHostIpAddress = normalized.remoteHostIpAddress
+            ? String(normalized.remoteHostIpAddress)
+            : '';
         }
         if (typeof normalized.remoteUser !== 'string') {
           normalized.remoteUser = normalized.remoteUser ? String(normalized.remoteUser) : '';
@@ -413,13 +457,21 @@ const server = http.createServer(async (req, res) => {
           lastChecked: now,
         }));
         const { value: initialRemoteControlled } = detectRemoteControlled(payload);
+        const remoteHostRaw = payload.remoteHost ? String(payload.remoteHost) : '';
+        const remoteHostIpInput =
+          payload.remoteHostIpAddress ??
+          payload.remoteHostIp ??
+          payload.remoteIpAddress ??
+          payload.remoteIp ??
+          null;
         const session = {
           id: randomUUID(),
           hostname: String(payload.hostname),
           ipAddress: String(payload.ipAddress),
           username: payload.username ? String(payload.username) : '',
           remoteUser: payload.remoteUser ? String(payload.remoteUser) : '',
-          remoteHost: payload.remoteHost ? String(payload.remoteHost) : '',
+          remoteHost: remoteHostRaw,
+          remoteHostIpAddress: normalizeRemoteHostIp(remoteHostIpInput, remoteHostRaw),
           remoteControlled: initialRemoteControlled === true ? true : null,
           status: payload.status === 'disconnected' ? 'disconnected' : 'connected',
           lastUpdated: now,
@@ -465,6 +517,23 @@ const server = http.createServer(async (req, res) => {
             ? ''
             : String(combinedPayload.remoteHost)
           : '';
+        const remoteHostIpKeys = [
+          'remoteHostIpAddress',
+          'remoteHostIp',
+          'remoteIpAddress',
+          'remoteIp',
+          'remoteHostAddress',
+          'connectionSourceIp',
+          'accessHostIp',
+        ];
+        const remoteHostIpKey = remoteHostIpKeys.find(key =>
+          Object.prototype.hasOwnProperty.call(combinedPayload, key)
+        );
+        const remoteHostIpInput =
+          remoteHostIpKey !== undefined ? combinedPayload[remoteHostIpKey] : undefined;
+        const remoteHostIpAddress = normalizeRemoteHostIp(remoteHostIpInput, remoteHost);
+        const hasRemoteHostIpField =
+          remoteHostIpKey !== undefined || (hasRemoteHostField && isLikelyIp(remoteHost));
         const hasRemoteUserField = Object.prototype.hasOwnProperty.call(
           combinedPayload,
           'remoteUser'
@@ -497,6 +566,10 @@ const server = http.createServer(async (req, res) => {
         const previousStatus = hadSession ? session.status : null;
         const previousRemoteHost = hadSession && typeof session.remoteHost === 'string' ? session.remoteHost : '';
         const previousRemoteUser = hadSession && typeof session.remoteUser === 'string' ? session.remoteUser : '';
+        const previousRemoteHostIpAddress =
+          hadSession && typeof session.remoteHostIpAddress === 'string'
+            ? session.remoteHostIpAddress
+            : '';
 
         if (session) {
           session.hostname = hostname || session.hostname;
@@ -505,6 +578,9 @@ const server = http.createServer(async (req, res) => {
           }
           if (hasRemoteHostField) {
             session.remoteHost = remoteHost;
+          }
+          if (hasRemoteHostIpField) {
+            session.remoteHostIpAddress = remoteHostIpAddress;
           }
           if (hasRemoteUserField) {
             session.remoteUser = remoteUser;
@@ -562,6 +638,7 @@ const server = http.createServer(async (req, res) => {
             username,
             remoteUser,
             remoteHost,
+            remoteHostIpAddress: hasRemoteHostIpField ? remoteHostIpAddress : '',
             remoteControlled: remoteControlDetection.value === true ? true : null,
             status: 'connected',
             lastUpdated: now,
@@ -584,7 +661,8 @@ const server = http.createServer(async (req, res) => {
           eventType = 'connected';
         } else if (
           (remoteHost && remoteHost !== previousRemoteHost) ||
-          (remoteUser && remoteUser !== previousRemoteUser)
+          (remoteUser && remoteUser !== previousRemoteUser) ||
+          (hasRemoteHostIpField && remoteHostIpAddress !== previousRemoteHostIpAddress)
         ) {
           eventType = 'connected';
         }
@@ -611,6 +689,8 @@ const server = http.createServer(async (req, res) => {
           const previousStatus = session.status;
           const previousRemoteHost = typeof session.remoteHost === 'string' ? session.remoteHost : '';
           const previousRemoteUser = typeof session.remoteUser === 'string' ? session.remoteUser : '';
+          const previousRemoteHostIpAddress =
+            typeof session.remoteHostIpAddress === 'string' ? session.remoteHostIpAddress : '';
           let updated = false;
           if (payload.hostname) {
             session.hostname = String(payload.hostname);
@@ -626,6 +706,20 @@ const server = http.createServer(async (req, res) => {
           }
           if (payload.remoteHost !== undefined) {
             session.remoteHost = String(payload.remoteHost);
+            updated = true;
+          }
+          if (
+            payload.remoteHostIpAddress !== undefined ||
+            payload.remoteHostIp !== undefined ||
+            payload.remoteIpAddress !== undefined ||
+            payload.remoteIp !== undefined
+          ) {
+            const remoteHostIpInput =
+              payload.remoteHostIpAddress ??
+              payload.remoteHostIp ??
+              payload.remoteIpAddress ??
+              payload.remoteIp;
+            session.remoteHostIpAddress = normalizeRemoteHostIp(remoteHostIpInput, session.remoteHost);
             updated = true;
           }
           if (payload.remoteUser !== undefined) {
@@ -674,7 +768,15 @@ const server = http.createServer(async (req, res) => {
               eventType = 'connected';
             } else if (
               (payload.remoteHost !== undefined && session.remoteHost && session.remoteHost !== previousRemoteHost) ||
-              (payload.remoteUser !== undefined && session.remoteUser && session.remoteUser !== previousRemoteUser)
+              (payload.remoteUser !== undefined && session.remoteUser && session.remoteUser !== previousRemoteUser) ||
+              ((
+                payload.remoteHostIpAddress !== undefined ||
+                payload.remoteHostIp !== undefined ||
+                payload.remoteIpAddress !== undefined ||
+                payload.remoteIp !== undefined
+              ) &&
+                session.remoteHostIpAddress &&
+                session.remoteHostIpAddress !== previousRemoteHostIpAddress)
             ) {
               eventType = 'connected';
             }
