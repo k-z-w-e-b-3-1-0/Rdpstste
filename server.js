@@ -19,6 +19,105 @@ if (process.env.SLACK_WEBHOOK_URL) {
   }
 }
 
+function normalizeBoolean(value) {
+  if (value === undefined) {
+    return null;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    if (['true', '1', 'yes', 'y', 'on', 'remote', 'rdp'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off', 'local', 'console'].includes(normalized)) {
+      return false;
+    }
+    if (['null', 'unknown', 'unset'].includes(normalized)) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function detectRemoteControlled(payload, previousValue) {
+  const directKeys = [
+    'remoteControlled',
+    'isRemoteControlled',
+    'remoteSession',
+    'isRemoteSession',
+    'remoteDesktopActive',
+    'rdpActive',
+  ];
+  for (const key of directKeys) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      const normalized = normalizeBoolean(payload[key]);
+      if (normalized === true) {
+        return { value: true, explicit: true };
+      }
+      if (
+        normalized === false ||
+        payload[key] === false ||
+        payload[key] === null ||
+        (typeof payload[key] === 'string' &&
+          (!payload[key].trim() || ['null', 'unknown', 'unset'].includes(payload[key].trim().toLowerCase())))
+      ) {
+        return { value: null, explicit: true };
+      }
+    }
+  }
+
+  const sessionNameCandidate =
+    typeof payload.sessionName === 'string'
+      ? payload.sessionName
+      : typeof payload.session === 'string'
+      ? payload.session
+      : null;
+  if (sessionNameCandidate) {
+    const normalized = sessionNameCandidate.trim().toLowerCase();
+    if (normalized.startsWith('rdp')) {
+      return { value: true, explicit: true };
+    }
+  }
+
+  const protocolCandidate =
+    typeof payload.sessionProtocol === 'string'
+      ? payload.sessionProtocol
+      : typeof payload.protocol === 'string'
+      ? payload.protocol
+      : null;
+  if (protocolCandidate) {
+    const normalized = protocolCandidate.trim().toLowerCase();
+    if (normalized.includes('rdp')) {
+      return { value: true, explicit: true };
+    }
+  }
+
+  if (typeof payload.clientName === 'string' && payload.clientName.trim().length > 0) {
+    return { value: true, explicit: true };
+  }
+
+  if (typeof payload.remoteHost === 'string' && payload.remoteHost.trim().length > 0) {
+    return { value: true, explicit: true };
+  }
+
+  if (previousValue === true) {
+    return { value: true, explicit: false };
+  }
+
+  return { value: null, explicit: false };
+}
+
 function postSlackMessage(payload) {
   return new Promise(resolve => {
     if (!slackWebhook) {
@@ -76,6 +175,10 @@ async function notifySessionEvent(eventType, session, context = {}) {
   } else if (eventType === 'usage-intent') {
     headline = '🧑‍💻 端末の利用予定が共有されました';
     extraLines.push('アクション: これから端末を利用予定です');
+  }
+
+  if (session.remoteControlled === true) {
+    extraLines.push('遠隔操作: リモートデスクトップ経由');
   }
 
   const lines = [
@@ -169,6 +272,11 @@ function loadSessions() {
           normalized.expectedProcesses = normalized.expectedProcesses
             .map(name => (typeof name === 'string' ? name.trim() : ''))
             .filter(name => name.length > 0);
+        }
+        if (normalized.remoteControlled === true) {
+          normalized.remoteControlled = true;
+        } else {
+          normalized.remoteControlled = null;
         }
         if (typeof normalized.remoteHost !== 'string') {
           normalized.remoteHost = normalized.remoteHost ? String(normalized.remoteHost) : '';
@@ -304,6 +412,7 @@ const server = http.createServer(async (req, res) => {
           ...entry,
           lastChecked: now,
         }));
+        const { value: initialRemoteControlled } = detectRemoteControlled(payload);
         const session = {
           id: randomUUID(),
           hostname: String(payload.hostname),
@@ -311,6 +420,7 @@ const server = http.createServer(async (req, res) => {
           username: payload.username ? String(payload.username) : '',
           remoteUser: payload.remoteUser ? String(payload.remoteUser) : '',
           remoteHost: payload.remoteHost ? String(payload.remoteHost) : '',
+          remoteControlled: initialRemoteControlled === true ? true : null,
           status: payload.status === 'disconnected' ? 'disconnected' : 'connected',
           lastUpdated: now,
           lastSeen: now,
@@ -346,8 +456,24 @@ const server = http.createServer(async (req, res) => {
         const now = new Date().toISOString();
         const hostname = combinedPayload.hostname ? String(combinedPayload.hostname) : clientIp;
         const username = combinedPayload.username ? String(combinedPayload.username) : '';
-        const remoteHost = combinedPayload.remoteHost ? String(combinedPayload.remoteHost) : '';
-        const remoteUser = combinedPayload.remoteUser ? String(combinedPayload.remoteUser) : '';
+        const hasRemoteHostField = Object.prototype.hasOwnProperty.call(
+          combinedPayload,
+          'remoteHost'
+        );
+        const remoteHost = hasRemoteHostField
+          ? combinedPayload.remoteHost === null || combinedPayload.remoteHost === undefined
+            ? ''
+            : String(combinedPayload.remoteHost)
+          : '';
+        const hasRemoteUserField = Object.prototype.hasOwnProperty.call(
+          combinedPayload,
+          'remoteUser'
+        );
+        const remoteUser = hasRemoteUserField
+          ? combinedPayload.remoteUser === null || combinedPayload.remoteUser === undefined
+            ? ''
+            : String(combinedPayload.remoteUser)
+          : '';
         const notes = combinedPayload.notes ? String(combinedPayload.notes) : '';
         const expectedProcesses = normalizeStringList(combinedPayload.expectedProcesses);
         const runningProcesses = Array.from(
@@ -363,6 +489,11 @@ const server = http.createServer(async (req, res) => {
         }
 
         const hadSession = Boolean(session);
+        const previousRemoteControlled = hadSession ? session.remoteControlled : undefined;
+        const remoteControlDetection = detectRemoteControlled(
+          { ...combinedPayload, clientIp },
+          previousRemoteControlled
+        );
         const previousStatus = hadSession ? session.status : null;
         const previousRemoteHost = hadSession && typeof session.remoteHost === 'string' ? session.remoteHost : '';
         const previousRemoteUser = hadSession && typeof session.remoteUser === 'string' ? session.remoteUser : '';
@@ -372,13 +503,11 @@ const server = http.createServer(async (req, res) => {
           if (username) {
             session.username = username;
           }
-          if (remoteHost) {
+          if (hasRemoteHostField) {
             session.remoteHost = remoteHost;
           }
-          if (remoteUser) {
+          if (hasRemoteUserField) {
             session.remoteUser = remoteUser;
-          } else if (typeof session.remoteUser !== 'string') {
-            session.remoteUser = '';
           }
           if (notes) {
             session.notes = notes;
@@ -387,6 +516,18 @@ const server = http.createServer(async (req, res) => {
           session.status = 'connected';
           session.lastSeen = now;
           session.lastUpdated = now;
+          if (
+            remoteControlDetection.explicit ||
+            session.remoteControlled == null
+          ) {
+            session.remoteControlled =
+              remoteControlDetection.value === true ? true : null;
+          } else if (
+            remoteControlDetection.value === true &&
+            session.remoteControlled !== true
+          ) {
+            session.remoteControlled = true;
+          }
           if (!Array.isArray(session.expectedProcesses)) {
             session.expectedProcesses = [];
           }
@@ -421,6 +562,7 @@ const server = http.createServer(async (req, res) => {
             username,
             remoteUser,
             remoteHost,
+            remoteControlled: remoteControlDetection.value === true ? true : null,
             status: 'connected',
             lastUpdated: now,
             lastSeen: now,
@@ -488,6 +630,11 @@ const server = http.createServer(async (req, res) => {
           }
           if (payload.remoteUser !== undefined) {
             session.remoteUser = String(payload.remoteUser);
+            updated = true;
+          }
+          if (payload.remoteControlled !== undefined) {
+            const normalizedRemoteControlled = normalizeBoolean(payload.remoteControlled);
+            session.remoteControlled = normalizedRemoteControlled === true ? true : null;
             updated = true;
           }
           if (payload.notes !== undefined) {
