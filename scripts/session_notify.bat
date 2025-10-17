@@ -19,14 +19,8 @@ for %%P in (%TARGET_PROCESSES%) do (
 REM Detect running target processes
 set "RUNNING_PROCESSES="
 for %%P in (%TARGET_PROCESSES%) do (
-    set "FOUND="
-    for /f "usebackq tokens=1 delims=," %%R in (`tasklist /FI "IMAGENAME eq %%P" /FO CSV /NH 2^>NUL`) do (
-        set "LINE=%%~R"
-        if /I not "!LINE:~0,5!"=="INFO:" (
-            set "FOUND=1"
-        )
-    )
-    if defined FOUND (
+    tasklist /FI "IMAGENAME eq %%P" /FO CSV /NH 2>NUL | findstr /I /C:"\"%%P\"" >NUL
+    if not errorlevel 1 (
         if defined RUNNING_PROCESSES (
             set "RUNNING_PROCESSES=!RUNNING_PROCESSES!,%%P"
         ) else (
