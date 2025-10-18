@@ -305,22 +305,31 @@ function renderRemoteHostCell(session) {
   return '<span class="muted">-</span>';
 }
 
+function buildConcurrencyHeaders(session) {
+  if (session && session.lastUpdated) {
+    return { 'If-Match': session.lastUpdated };
+  }
+  return {};
+}
+
 async function request(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const defaultHeaders = { 'Content-Type': 'application/json' };
+  const mergedHeaders = { ...defaultHeaders, ...(options.headers || {}) };
+  const fetchOptions = { ...options, headers: mergedHeaders };
+  const response = await fetch(url, fetchOptions);
   if (!response.ok) {
-    let message = `HTTP ${response.status}`;
+    let message = response.statusText || `HTTP ${response.status}`;
     try {
       const body = await response.json();
       if (body.error) {
-        message += `: ${body.error}`;
+        message = body.error;
       }
     } catch (_) {
       // ignore
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) {
     return null;
@@ -374,6 +383,7 @@ function renderSessions(sessions) {
         try {
           const result = await request(`${API_BASE}/api/sessions/${session.id}/announce`, {
             method: 'POST',
+            headers: buildConcurrencyHeaders(session),
           });
           const slackEnabled = Boolean(result && result.slackEnabled);
           await loadSessions();
@@ -383,6 +393,9 @@ function renderSessions(sessions) {
               : 'Slack Webhook が設定されていないため通知は送信されませんでした。'
           );
         } catch (error) {
+          if (error.status === 409) {
+            await loadSessions();
+          }
           alert(`利用予定の通知に失敗しました: ${error.message}`);
         } finally {
           announceButton.disabled = false;
@@ -395,9 +408,15 @@ function renderSessions(sessions) {
       heartbeatButton.addEventListener('click', async () => {
         heartbeatButton.disabled = true;
         try {
-          await request(`${API_BASE}/api/sessions/${session.id}/heartbeat`, { method: 'POST' });
+          await request(`${API_BASE}/api/sessions/${session.id}/heartbeat`, {
+            method: 'POST',
+            headers: buildConcurrencyHeaders(session),
+          });
           await loadSessions();
         } catch (error) {
+          if (error.status === 409) {
+            await loadSessions();
+          }
           alert(`ハートビート送信に失敗しました: ${error.message}`);
         } finally {
           heartbeatButton.disabled = false;
@@ -413,10 +432,14 @@ function renderSessions(sessions) {
           const newStatus = session.status === 'connected' ? 'disconnected' : 'connected';
           await request(`${API_BASE}/api/sessions/${session.id}`, {
             method: 'PUT',
+            headers: buildConcurrencyHeaders(session),
             body: JSON.stringify({ status: newStatus }),
           });
           await loadSessions();
         } catch (error) {
+          if (error.status === 409) {
+            await loadSessions();
+          }
           alert(`状態変更に失敗しました: ${error.message}`);
         } finally {
           toggleButton.disabled = false;
@@ -431,9 +454,15 @@ function renderSessions(sessions) {
         }
         deleteButton.disabled = true;
         try {
-          await request(`${API_BASE}/api/sessions/${session.id}`, { method: 'DELETE' });
+          await request(`${API_BASE}/api/sessions/${session.id}`, {
+            method: 'DELETE',
+            headers: buildConcurrencyHeaders(session),
+          });
           await loadSessions();
         } catch (error) {
+          if (error.status === 409) {
+            await loadSessions();
+          }
           alert(`削除に失敗しました: ${error.message}`);
         } finally {
           deleteButton.disabled = false;

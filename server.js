@@ -400,6 +400,29 @@ function collectRequestData(req) {
   });
 }
 
+function getIfMatchHeader(req) {
+  const header = req.headers['if-match'];
+  if (!header) {
+    return null;
+  }
+  if (Array.isArray(header)) {
+    return header.length > 0 ? String(header[0]) : null;
+  }
+  const token = String(header).trim();
+  return token.length > 0 ? token : null;
+}
+
+function isConcurrencyConflict(req, session) {
+  const token = getIfMatchHeader(req);
+  return Boolean(token && session && token !== session.lastUpdated);
+}
+
+function sendConcurrencyConflict(res) {
+  sendJSON(res, 409, {
+    error: '他のユーザーが先に更新しました。画面を再読み込みして再度操作してください。',
+  });
+}
+
 function serveStatic(req, res) {
   let filePath = url.parse(req.url).pathname || '/';
   if (filePath === '/') {
@@ -685,6 +708,10 @@ const server = http.createServer(async (req, res) => {
         const session = sessions[index];
 
         if (method === 'PUT' && !action) {
+          if (isConcurrencyConflict(req, session)) {
+            sendConcurrencyConflict(res);
+            return;
+          }
           const payload = await collectRequestData(req);
           const previousStatus = session.status;
           const previousRemoteHost = typeof session.remoteHost === 'string' ? session.remoteHost : '';
@@ -789,6 +816,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === 'POST' && action === 'heartbeat') {
+          if (isConcurrencyConflict(req, session)) {
+            sendConcurrencyConflict(res);
+            return;
+          }
           session.lastSeen = new Date().toISOString();
           session.status = 'connected';
           session.lastUpdated = session.lastSeen;
@@ -799,6 +830,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === 'POST' && action === 'announce') {
+          if (isConcurrencyConflict(req, session)) {
+            sendConcurrencyConflict(res);
+            return;
+          }
           session.lastUpdated = new Date().toISOString();
           sessions[index] = session;
           saveSessions(sessions);
@@ -808,6 +843,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (method === 'DELETE' && !action) {
+          if (isConcurrencyConflict(req, session)) {
+            sendConcurrencyConflict(res);
+            return;
+          }
           sessions.splice(index, 1);
           saveSessions(sessions);
           sendJSON(res, 204, {});
