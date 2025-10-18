@@ -7,6 +7,248 @@ const disconnectedCountEl = document.getElementById('disconnected-count');
 const refreshButton = document.getElementById('refresh-button');
 const createForm = document.getElementById('create-form');
 
+const announceEffect = window.p5
+  ? new window.p5(p => {
+      let particles = [];
+
+      const effectFactories = [
+        (x, y) => {
+          const particleCount = 24;
+          const hueShift = p.random(-20, 20);
+          for (let i = 0; i < particleCount; i += 1) {
+            const angle = (p.TWO_PI * i) / particleCount + p.random(-0.15, 0.15);
+            const speed = p.random(2.5, 6.5);
+            particles.push({
+              effectType: 'burst',
+              x,
+              y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              friction: 0.94,
+              life: 1,
+              decay: 0.028,
+              size: p.random(14, 26),
+              color: [74 + hueShift, 144 + hueShift * 0.5, 226],
+            });
+          }
+        },
+        (x, y) => {
+          const ringCount = 3;
+          for (let i = 0; i < ringCount; i += 1) {
+            particles.push({
+              effectType: 'ring',
+              x,
+              y,
+              radius: 0,
+              growth: p.random(3, 5) + i,
+              life: 1,
+              decay: 0.022,
+              strokeWeight: p.random(2, 4),
+              color: [120, 200, 255],
+            });
+          }
+        },
+        (x, y) => {
+          const palette = [
+            [244, 132, 92],
+            [255, 200, 87],
+            [147, 197, 253],
+            [112, 206, 140],
+          ];
+          const count = 18;
+          for (let i = 0; i < count; i += 1) {
+            const color = palette[Math.floor(p.random(palette.length))];
+            particles.push({
+              effectType: 'confetti',
+              x,
+              y,
+              vx: p.random(-2.5, 2.5),
+              vy: p.random(-1.5, -0.5),
+              rotation: p.random(p.TWO_PI),
+              rotationSpeed: p.random(-0.2, 0.2),
+              size: p.random(6, 12),
+              life: 1,
+              decay: 0.025,
+              gravity: 0.18,
+              color,
+            });
+          }
+        },
+        (x, y) => {
+          const sparkleCount = 14;
+          for (let i = 0; i < sparkleCount; i += 1) {
+            particles.push({
+              effectType: 'sparkle',
+              x: x + p.random(-8, 8),
+              y: y + p.random(-8, 8),
+              jitter: p.random(0.3, 1.2),
+              pulseSpeed: p.random(0.08, 0.16),
+              pulseOffset: p.random(p.TWO_PI),
+              size: p.random(4, 9),
+              life: 1,
+              decay: 0.035,
+              color: [255, 255, 210],
+            });
+          }
+        },
+        (x, y) => {
+          const rayCount = 12;
+          for (let i = 0; i < rayCount; i += 1) {
+            const angle = (p.TWO_PI * i) / rayCount + p.random(-0.15, 0.15);
+            particles.push({
+              effectType: 'ray',
+              x,
+              y,
+              angle,
+              wobble: p.random(-0.02, 0.02),
+              length: p.random(16, 28),
+              maxLength: p.random(70, 100),
+              life: 1,
+              decay: 0.03,
+              strokeWeight: p.random(1.5, 2.8),
+              color: [255, 214, 150],
+            });
+          }
+        },
+      ];
+
+      const updateParticle = particle => {
+        switch (particle.effectType) {
+          case 'burst':
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.vx *= particle.friction;
+            particle.vy *= particle.friction;
+            break;
+          case 'ring':
+            particle.radius += particle.growth;
+            particle.growth *= 0.97;
+            break;
+          case 'confetti':
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.vy += particle.gravity;
+            particle.rotation += particle.rotationSpeed;
+            break;
+          case 'sparkle':
+            particle.pulseOffset += particle.pulseSpeed;
+            particle.x += Math.cos(particle.pulseOffset) * particle.jitter;
+            particle.y += Math.sin(particle.pulseOffset) * particle.jitter;
+            break;
+          case 'ray':
+            particle.length += (particle.maxLength - particle.length) * 0.12;
+            particle.angle += particle.wobble;
+            break;
+          default:
+            break;
+        }
+
+        particle.life -= particle.decay ?? 0.03;
+        return particle.life > 0;
+      };
+
+      const drawParticle = particle => {
+        const alpha = p.constrain(particle.life, 0, 1);
+
+        switch (particle.effectType) {
+          case 'burst': {
+            const color = particle.color;
+            const size = particle.size * alpha;
+            p.noStroke();
+            p.fill(color[0], color[1], color[2], alpha * 200);
+            p.circle(particle.x, particle.y, size);
+            break;
+          }
+          case 'ring': {
+            const color = particle.color;
+            p.noFill();
+            p.stroke(color[0], color[1], color[2], alpha * 180);
+            p.strokeWeight(Math.max(0.5, particle.strokeWeight * alpha));
+            p.circle(particle.x, particle.y, particle.radius * 2);
+            break;
+          }
+          case 'confetti': {
+            const color = particle.color;
+            p.noStroke();
+            p.fill(color[0], color[1], color[2], alpha * 255);
+            p.translate(particle.x, particle.y);
+            p.rotate(particle.rotation);
+            p.rectMode(p.CENTER);
+            p.rect(0, 0, particle.size, particle.size * 0.6);
+            break;
+          }
+          case 'sparkle': {
+            const color = particle.color;
+            const pulse = 0.5 + 0.5 * Math.sin(particle.pulseOffset * 2);
+            const size = particle.size * (0.6 + pulse * 0.8);
+            p.noStroke();
+            p.fill(color[0], color[1], color[2], alpha * 230);
+            p.circle(particle.x, particle.y, size);
+            p.fill(color[0], color[1], color[2], alpha * 160);
+            p.circle(particle.x, particle.y, size * 0.4);
+            break;
+          }
+          case 'ray': {
+            const color = particle.color;
+            const endX = particle.x + Math.cos(particle.angle) * particle.length;
+            const endY = particle.y + Math.sin(particle.angle) * particle.length;
+            p.stroke(color[0], color[1], color[2], alpha * 200);
+            p.strokeWeight(Math.max(0.5, particle.strokeWeight * alpha));
+            p.line(particle.x, particle.y, endX, endY);
+            break;
+          }
+          default:
+            break;
+        }
+      };
+
+      p.setup = () => {
+        const canvas = p.createCanvas(window.innerWidth, window.innerHeight);
+        canvas.addClass('announce-effect');
+        canvas.position(0, 0);
+        canvas.style('pointer-events', 'none');
+        canvas.style('z-index', '20');
+        p.clear();
+      };
+
+      p.windowResized = () => {
+        p.resizeCanvas(window.innerWidth, window.innerHeight);
+      };
+
+      p.draw = () => {
+        if (particles.length === 0) {
+          p.clear();
+          return;
+        }
+
+        p.clear();
+        for (let i = particles.length - 1; i >= 0; i -= 1) {
+          const particle = particles[i];
+          if (!updateParticle(particle)) {
+            particles.splice(i, 1);
+            continue;
+          }
+
+          p.push();
+          if (particle.effectType === 'confetti') {
+            p.blendMode(p.BLEND);
+          } else {
+            p.blendMode(p.ADD);
+          }
+          drawParticle(particle);
+          p.pop();
+        }
+      };
+
+      p.triggerBurst = (x, y) => {
+        const createEffect = p.random(effectFactories);
+        if (typeof createEffect === 'function') {
+          createEffect(x, y);
+        }
+      };
+    })
+  : null;
+
 function escapeHtml(value) {
   if (value === undefined || value === null) return '';
   return String(value)
@@ -124,6 +366,10 @@ function renderSessions(sessions) {
       const announceButton = document.createElement('button');
       announceButton.textContent = '利用予定を通知';
       announceButton.addEventListener('click', async () => {
+        if (announceEffect && typeof announceEffect.triggerBurst === 'function') {
+          const rect = announceButton.getBoundingClientRect();
+          announceEffect.triggerBurst(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        }
         announceButton.disabled = true;
         try {
           const result = await request(`${API_BASE}/api/sessions/${session.id}/announce`, {

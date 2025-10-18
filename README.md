@@ -15,6 +15,16 @@
 - 接続検知時に Slack へ通知を送信
 - ダッシュボードからのボタン操作で利用予定を Slack に共有
 
+## UI イメージ
+
+### Announce エフェクトのバリエーション
+
+![Announce エフェクトのイメージ](docs/images/announce-effects-overview.svg)
+
+### ダッシュボード全体の構成例
+
+![ダッシュボード全体図](docs/images/dashboard-overview.svg)
+
 ## 必要要件
 
 - Node.js 18 以上

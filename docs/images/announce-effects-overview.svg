@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e3a8a" />
+    </linearGradient>
+    <style>
+      .panel {
+        fill: rgba(15, 23, 42, 0.55);
+        stroke: rgba(148, 163, 184, 0.35);
+        stroke-width: 2;
+        rx: 20;
+      }
+      .label {
+        font: 600 20px 'Noto Sans JP', 'Segoe UI', sans-serif;
+        fill: #f8fafc;
+        text-anchor: middle;
+      }
+      .caption {
+        font: 400 16px 'Noto Sans JP', 'Segoe UI', sans-serif;
+        fill: #cbd5f5;
+        text-anchor: middle;
+      }
+    </style>
+  </defs>
+  <rect width="960" height="300" fill="url(#bg)" rx="28" />
+  <text x="480" y="52" class="label" font-size="28" letter-spacing="1">Announce エフェクト イメージ</text>
+  <text x="480" y="80" class="caption">ボタン押下ごとにランダムで切り替わる 5 種類の演出</text>
+
+  <g transform="translate(80, 110)">
+    <rect class="panel" width="160" height="160" />
+    <g transform="translate(80, 80)">
+      <circle cx="0" cy="0" r="14" fill="#4a90e2" opacity="0.8" />
+      <g fill="none" stroke="#7dd3fc" stroke-width="6" stroke-linecap="round">
+        <line x1="0" y1="-60" x2="0" y2="-30" />
+        <line x1="0" y1="60" x2="0" y2="30" />
+        <line x1="60" y1="0" x2="30" y2="0" />
+        <line x1="-60" y1="0" x2="-30" y2="0" />
+        <line x1="42" y1="42" x2="21" y2="21" />
+        <line x1="-42" y1="42" x2="-21" y2="21" />
+        <line x1="42" y1="-42" x2="21" y2="-21" />
+        <line x1="-42" y1="-42" x2="-21" y2="-21" />
+      </g>
+    </g>
+    <text x="80" y="150" class="label" font-size="18">バースト</text>
+  </g>
+
+  <g transform="translate(260, 110)">
+    <rect class="panel" width="160" height="160" />
+    <g transform="translate(80, 80)">
+      <circle cx="0" cy="0" r="18" fill="none" stroke="#60a5fa" stroke-width="6" opacity="0.8" />
+      <circle cx="0" cy="0" r="42" fill="none" stroke="#bae6fd" stroke-width="4" opacity="0.6" />
+      <circle cx="0" cy="0" r="64" fill="none" stroke="#bae6fd" stroke-width="3" stroke-dasharray="14 12" opacity="0.5" />
+    </g>
+    <text x="80" y="150" class="label" font-size="18">リング</text>
+  </g>
+
+  <g transform="translate(440, 110)">
+    <rect class="panel" width="160" height="160" />
+    <g transform="translate(80, 80)">
+      <rect x="-56" y="-36" width="32" height="18" fill="#f4845c" transform="rotate(-18)" opacity="0.9" />
+      <rect x="12" y="-30" width="28" height="14" fill="#ffc857" transform="rotate(12)" opacity="0.9" />
+      <rect x="-22" y="8" width="26" height="12" fill="#93c5fd" transform="rotate(24)" opacity="0.9" />
+      <rect x="18" y="20" width="28" height="16" fill="#70ce8c" transform="rotate(-12)" opacity="0.9" />
+      <rect x="-14" y="-10" width="24" height="12" fill="#f4845c" transform="rotate(33)" opacity="0.7" />
+    </g>
+    <text x="80" y="150" class="label" font-size="18">コンフェティ</text>
+  </g>
+
+  <g transform="translate(620, 110)">
+    <rect class="panel" width="160" height="160" />
+    <g transform="translate(80, 80)">
+      <circle cx="0" cy="0" r="26" fill="#fef08a" opacity="0.9" />
+      <circle cx="0" cy="0" r="14" fill="#facc15" opacity="0.8" />
+      <g stroke="#fde68a" stroke-width="4" stroke-linecap="round">
+        <line x1="0" y1="-44" x2="0" y2="-28" />
+        <line x1="0" y1="44" x2="0" y2="28" />
+        <line x1="44" y1="0" x2="28" y2="0" />
+        <line x1="-44" y1="0" x2="-28" y2="0" />
+        <line x1="34" y1="34" x2="22" y2="22" />
+        <line x1="-34" y1="34" x2="-22" y2="22" />
+        <line x1="34" y1="-34" x2="22" y2="-22" />
+        <line x1="-34" y1="-34" x2="-22" y2="-22" />
+      </g>
+    </g>
+    <text x="80" y="150" class="label" font-size="18">スパークル</text>
+  </g>
+
+  <g transform="translate(800, 110)">
+    <rect class="panel" width="160" height="160" />
+    <g transform="translate(80, 80)">
+      <path d="M0,-60 L4,-18 L36,-12 L8,4 L16,44 L0,18 L-16,44 L-8,4 L-36,-12 L-4,-18 Z" fill="#fbbf24" opacity="0.92" />
+      <path d="M0,-40 L2,-12 L24,-8 L6,4 L10,26 L0,14 L-10,26 L-6,4 L-24,-8 L-2,-12 Z" fill="#f59e0b" opacity="0.95" />
+    </g>
+    <text x="80" y="150" class="label" font-size="18">レイ</text>
+  </g>
+</svg>
