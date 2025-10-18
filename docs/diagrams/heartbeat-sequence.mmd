@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant AgentA as Heartbeat Agent (Node A)
+    participant AgentB as Heartbeat Agent (Node B)
+    participant Collector as Heartbeat Collector
+    participant Store as 状態ストア/アラート機構
+
+    loop 5分毎
+        AgentA->>Collector: ハートビート送信 (稼働状態・メタ情報)
+        Collector-->>AgentA: ACK / 受信完了
+        Collector->>Store: Node A の状態更新
+
+        AgentB->>Collector: ハートビート送信 (稼働状態・メタ情報)
+        Collector-->>AgentB: ACK / 受信完了
+        Collector->>Store: Node B の状態更新
+
+        alt ハートビート欠落判定
+            Collector->>Store: アラート生成 / SLA 記録
+        else 正常稼働
+            Collector->>Store: 正常ログ記録
+        end
+    end

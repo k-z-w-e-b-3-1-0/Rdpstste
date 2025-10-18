@@ -1,0 +1,19 @@
+graph LR
+    subgraph Monitoring_Server["監視サーバ\n(OS + Heartbeat Collector)"]
+        Collector["Heartbeat Collector Service"]
+        Store["状態ストア\n(メモリ or DB)"]
+    end
+
+    subgraph Monitored_Node_A["監視対象ノード A\n(OS + Heartbeat Agent)"]
+        AgentA["Heartbeat Agent"]
+        AppA["アプリケーションA"]
+    end
+
+    subgraph Monitored_Node_B["監視対象ノード B\n(OS + Heartbeat Agent)"]
+        AgentB["Heartbeat Agent"]
+        AppB["アプリケーションB"]
+    end
+
+    AgentA -- "5分おきのハートビート\n(HTTP(S)/gRPC 等)" --> Collector
+    AgentB -- "5分おきのハートビート\n(HTTP(S)/gRPC 等)" --> Collector
+    Collector -- "状態更新・異常検知" --> Store
