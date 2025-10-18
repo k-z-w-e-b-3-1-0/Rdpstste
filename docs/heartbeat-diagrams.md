@@ -6,6 +6,13 @@
 
 ![ハートビート監視の配置図](https://mermaid.ink/img/Sy9KLMhQ8AniUgCC4tKkdDDfNz8vsyS_KDMvPT44tagstSha6fnsxS-WTXvctPVx857HzRNi8jT8gxW0FTxSE4tKklITSxSc83NyUpOBujSVYsGmgQBcMFoJi0oFkOGZyalIGoKBwqlA27q2PWvtfty083Fzx-OmRUDbHjcvfNy86HHzKgWgPhcnmCWpeSlcWN2emhLvl5-SGu8Ic_rT9ftebASa0Qf2QKeCI6YXHNNT80qQnQ8WcER2O1gEWUVBAVAe6MTHzdOBjnvctBFkfNP2x83LHzdvdiTWlU64XOlErCudCLjSCbcrndBdCfG2gq6ugpLp0462x41djxt7Hzeue9zcD3ZWx-PmyRAG0HUeISEBGsGa-ulBAc4Kz9d2aioBNdohIhlhohM1TUQkIpChkPTybPaWZ9M2PG7e_Xzqhqc7djxbMuf5_KUQzeB0xQUA)
 
+<details>
+<summary>オフライン閲覧向けのローカル画像</summary>
+
+![ローカル生成した配置図](./images/heartbeat-deployment.svg)
+
+</details>
+
 Mermaid 記法のソースは [`docs/diagrams/heartbeat-deployment.mmd`](./diagrams/heartbeat-deployment.mmd) に保存してあります。
 
 ## シーケンス図 (Sequence Diagram)
