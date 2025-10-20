@@ -1,0 +1,22 @@
+%%{init: {'flowchart': {'curve': 'basis'}} }%%
+stateDiagram-v2
+    direction LR
+
+    [*] --> Disconnected
+
+    Disconnected --> Connected: session_start_event\nPOST /api/sessions/start
+    Disconnected --> Connected: session_notify\nPOST /api/sessions/auto-heartbeat
+
+    Connected --> InUse: session_notify / session_heartbeat_event\nアクティビティあり
+    Connected --> Idle: session_notify / session_heartbeat_event\nアイドル判定あり
+
+    InUse --> Idle: session_notify / session_heartbeat_event\n一定時間操作なし
+    Idle --> InUse: session_notify / session_heartbeat_event\nユーザー操作再開
+
+    InUse --> Disconnected: session_end_event\nPOST /api/sessions/end
+    InUse --> Disconnected: 管理者操作\nPUT /api/sessions/{id} status=disconnected
+    InUse --> Disconnected: ハートビート途絶\nタイムアウト判定
+
+    Idle --> Disconnected: session_end_event / 管理者操作\nまたはハートビート途絶
+
+    Connected --> Disconnected: 管理者操作\nPUT /api/sessions/{id} status=disconnected
