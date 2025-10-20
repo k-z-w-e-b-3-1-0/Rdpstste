@@ -1,8 +1,10 @@
 graph LR
     subgraph MonitoredEndpoint["監視対象端末\n(Windows クライアント)"]
         TaskScheduler["タスク スケジューラ"]
+        SessionStart["session_start_event\n(.ps1 / .bat)"]
         AutoHeartbeat["session_notify\n(.ps1 / .bat)"]
         ManualHeartbeat["session_heartbeat_event\n(.ps1 / .bat)"]
+        SessionEnd["session_end_event\n(.ps1 / .bat)"]
     end
 
     subgraph OperatorDevice["オペレーター端末"]
@@ -16,14 +18,19 @@ graph LR
         Slack["Slack Webhook\n(任意)"]
     end
 
+    TaskScheduler -- "接続確立直後" --> SessionStart
     TaskScheduler -- "接続時 / 定期トリガー" --> AutoHeartbeat
+    TaskScheduler -- "切断検知時" --> SessionEnd
     AutoHeartbeat -- "POST /api/sessions/auto-heartbeat" --> API
     ManualHeartbeat -- "POST /api/sessions/{id}/heartbeat" --> API
+    SessionStart -- "POST /api/sessions/start" --> API
+    SessionEnd -- "POST /api/sessions/end" --> API
     Browser -- "PUT /api/sessions/{id}\n(status=disconnected)" --> API
     Browser -- "GET /api/sessions" --> API
+    API -- "開始/終了イベントを追記" --> Store
     API -- "状態更新" --> Store
     API -- "一覧データ" --> Dashboard
     Dashboard -- "HTML/JS 配信" --> Browser
-    API -- "接続通知" --> Slack
+    API -- "接続/開始/終了通知" --> Slack
     API -- "最新セッション情報" --> AutoHeartbeat
     API -- "更新結果" --> Browser
