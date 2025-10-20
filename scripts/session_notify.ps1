@@ -22,7 +22,11 @@ try {
     $rdpConnection = Get-NetTCPConnection -State Established -LocalPort 3389 -ErrorAction Stop |
         Select-Object -First 1
     if ($rdpConnection -and $rdpConnection.RemoteAddress) {
-        $remoteHostIpAddress = $rdpConnection.RemoteAddress.ToString()
+        $candidateAddress = $rdpConnection.RemoteAddress.ToString()
+        $parsedAddress = $null
+        if ([System.Net.IPAddress]::TryParse($candidateAddress, [ref]$parsedAddress)) {
+            $remoteHostIpAddress = $parsedAddress.ToString()
+        }
     }
 } catch {
     # 取得に失敗した場合は無視
