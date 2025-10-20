@@ -1,36 +1,53 @@
 sequenceDiagram
     participant Client as 監視対象端末
+    participant StartAgent as session_start_event(.ps1/.bat)
     participant Agent as session_notify(.ps1/.bat)
+    participant Manual as session_heartbeat_event(.ps1/.bat)
+    participant EndAgent as session_end_event(.ps1/.bat)
     participant Api as Rdpstste REST API
     participant Store as sessions.json ストア
     participant Operator as 管理者
     participant Browser as Web ブラウザ
     participant Slack as Slack Webhook(任意)
 
-    rect rgb(232,245,255)
-        note over Agent,Api: 接続イベント
-        Client->>Agent: ログオン / 初回タスク起動
-        Agent->>Api: POST /api/sessions/auto-heartbeat<br/>接続メタデータ送信
-        Api->>Store: セッション登録 / status=connected
-        Api-->>Agent: 200 OK (セッション情報)
-        Api-->>Slack: 接続通知 (新規 or 状態遷移時)
+    rect rgb(250,245,232)
+        note over StartAgent,Api: セッション開始イベント
+        Client->>StartAgent: 認証完了 / ログオン直後
+        StartAgent->>Api: POST /api/sessions/start<br/>session.start ペイロード送信
+        Api->>Store: 開始ログを追記 / startedAt 更新
+        Api-->>StartAgent: 202 Accepted (イベント受領)
+        Api-->>Slack: 開始通知 (任意)
     end
 
-    rect rgb(240,255,240)
-        note over Agent,Api: ハートビートイベント
-        loop 5分毎
-            Agent->>Api: POST /api/sessions/auto-heartbeat<br/>lastSeen・プロセス状態更新
-            Api->>Store: lastSeen を更新
-            Api-->>Agent: 200 OK
+    rect rgb(232,245,255)
+        note over Agent,Api: 接続状態更新 / ハートビート
+        Client->>Agent: タスクスケジューラで数分おきに実行
+        Agent->>Api: POST /api/sessions/auto-heartbeat<br/>接続メタデータ・lastSeen を送信
+        Api->>Store: セッション登録 or status=connected 更新
+        Api-->>Agent: 200 OK (セッション情報)
+        Api-->>Slack: 接続通知 (新規 or 状態変化)
+        loop 任意のタイミング
+            Manual->>Api: POST /api/sessions/{id}/heartbeat<br/>session.heartbeat イベント送信
+            Api->>Store: lastSeen・idle 情報を更新
+            Api-->>Manual: 200 OK
         end
     end
 
     rect rgb(255,244,240)
-        note over Operator,Browser: 切断イベント
+        note over Operator,Browser: 手動ステータス更新
         Operator->>Browser: 「切断に変更」をクリック
         Browser->>Api: PUT /api/sessions/{id}<br/>status=disconnected
         Api->>Store: ステータスを更新
         Api-->>Browser: 200 OK (更新済セッション)
+    end
+
+    rect rgb(255,240,240)
+        note over EndAgent,Api: セッション終了イベント
+        Client->>EndAgent: ログオフ / セッション切断トリガー
+        EndAgent->>Api: POST /api/sessions/end<br/>session.end ペイロード送信
+        Api->>Store: 終了ログを追記 / status=disconnected
+        Api-->>EndAgent: 200 OK
+        Api-->>Slack: 終了通知 (任意)
     end
 
     Note over Browser,Api: ダッシュボードは30秒ごとに<br/>GET /api/sessions で最新状態を取得
