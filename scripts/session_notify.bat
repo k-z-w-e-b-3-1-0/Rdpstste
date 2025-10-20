@@ -15,6 +15,20 @@ if "%SERVER:~-1%"=="/" (
 )
 set "TARGET_PROCESSES=mstsc.exe custom-tool.exe"
 
+REM Locate PowerShell (Windows PowerShell or PowerShell Core)
+set "POWERSHELL_CMD="
+for %%S in (powershell pwsh) do (
+    where %%S >NUL 2>&1
+    if not errorlevel 1 (
+        set "POWERSHELL_CMD=%%S"
+        goto :FOUND_POWERSHELL
+    )
+)
+goto :POWERSHELL_DETECTED
+
+:FOUND_POWERSHELL
+:POWERSHELL_DETECTED
+
 REM Build comma-separated list of expected processes
 set "EXPECTED_PROCESSES="
 for %%P in (%TARGET_PROCESSES%) do (
@@ -40,44 +54,73 @@ for %%P in (%TARGET_PROCESSES%) do (
 if not defined RUNNING_PROCESSES set "RUNNING_PROCESSES="
 
 REM Collect session metadata
-if defined CLIENTNAME (
-    set "REMOTE_HOST=%CLIENTNAME%"
-) else (
-    set "REMOTE_HOST="
-)
-
+set "REMOTE_DATA_DIR=%ProgramData%\Rdpstste"
+set "REMOTE_SESSION_FILE=%REMOTE_DATA_DIR%\remote-session.json"
+set "REMOTE_HOST="
 set "REMOTE_HOST_IP="
-set "POWERSHELL_CMD="
-for %%S in (powershell pwsh) do (
-    where %%S >NUL 2>&1
-    if not errorlevel 1 (
-        set "POWERSHELL_CMD=%%S"
-        goto :FOUND_POWERSHELL
+set "REMOTE_HOST_FROM_FILE="
+set "REMOTE_HOST_IP_FROM_FILE="
+set "SESSION_NAME="
+set "SESSION_NAME_FROM_FILE="
+set "REMOTE_CONTROLLED="
+set "REMOTE_CONTROLLED_FROM_FILE="
+
+if exist "%REMOTE_SESSION_FILE%" if defined POWERSHELL_CMD (
+    for /f "usebackq tokens=1,2* delims==" %%A in (`%POWERSHELL_CMD% -NoProfile -Command "try { $data = Get-Content -Path '\"%REMOTE_SESSION_FILE%\"' -Raw | ConvertFrom-Json; if ($data.remoteHost) { \"REMOTE_HOST_FROM_FILE=\" + $data.remoteHost }; if ($data.remoteHostIpAddress) { \"REMOTE_HOST_IP_FROM_FILE=\" + $data.remoteHostIpAddress }; if ($data.sessionName) { \"SESSION_NAME_FROM_FILE=\" + $data.sessionName }; if ($null -ne $data.remoteControlled) { \"REMOTE_CONTROLLED_FROM_FILE=\" + ([string]$data.remoteControlled).ToLower() } } catch { }"`) do (
+        if /I "%%A"=="REMOTE_HOST_FROM_FILE" (
+            set "REMOTE_HOST_FROM_FILE=%%B"
+        ) else if /I "%%A"=="REMOTE_HOST_IP_FROM_FILE" (
+            set "REMOTE_HOST_IP_FROM_FILE=%%B"
+        ) else if /I "%%A"=="SESSION_NAME_FROM_FILE" (
+            set "SESSION_NAME_FROM_FILE=%%B"
+        ) else if /I "%%A"=="REMOTE_CONTROLLED_FROM_FILE" (
+            set "REMOTE_CONTROLLED_FROM_FILE=%%B"
+        )
     )
 )
-goto :AFTER_REMOTE_IP_SCAN
 
-:FOUND_POWERSHELL
-for /f "usebackq tokens=*" %%A in (`!POWERSHELL_CMD! -NoProfile -Command "try { $conn = Get-NetTCPConnection -State Established -LocalPort 3389 | Select-Object -First 1; if ($conn -and $conn.RemoteAddress) { $candidate = $conn.RemoteAddress.ToString(); $parsed = $null; if ([System.Net.IPAddress]::TryParse($candidate, [ref]$parsed)) { $parsed.ToString() } } } catch { }"`) do (
-    set "REMOTE_HOST_IP=%%A"
-    goto :AFTER_REMOTE_IP_SCAN
+if defined REMOTE_HOST_FROM_FILE (
+    set "REMOTE_HOST=!REMOTE_HOST_FROM_FILE!"
+) else if defined CLIENTNAME (
+    set "REMOTE_HOST=%CLIENTNAME%"
 )
 
-:AFTER_REMOTE_IP_SCAN
+if defined REMOTE_HOST_IP_FROM_FILE (
+    set "REMOTE_HOST_IP=!REMOTE_HOST_IP_FROM_FILE!"
+)
 
-if defined SESSIONNAME (
+if defined SESSION_NAME_FROM_FILE (
+    set "SESSION_NAME=!SESSION_NAME_FROM_FILE!"
+) else if defined SESSIONNAME (
     set "SESSION_NAME=%SESSIONNAME%"
-) else (
-    set "SESSION_NAME="
 )
 
-set "REMOTE_CONTROLLED=null"
-if defined SESSION_NAME (
+if defined REMOTE_CONTROLLED_FROM_FILE (
+    set "REMOTE_CONTROLLED=!REMOTE_CONTROLLED_FROM_FILE!"
+) else if defined SESSION_NAME (
     set "PREFIX=!SESSION_NAME:~0,7!"
     if /I "!PREFIX!"=="RDP-Tcp" (
         set "REMOTE_CONTROLLED=true"
     )
 )
+
+if defined POWERSHELL_CMD if not defined REMOTE_HOST_IP (
+    for /f "usebackq tokens=*" %%A in (`%POWERSHELL_CMD% -NoProfile -Command "try { $conn = Get-NetTCPConnection -State Established -LocalPort 3389 | Select-Object -First 1; if ($conn -and $conn.RemoteAddress) { $candidate = $conn.RemoteAddress.ToString(); $parsed = $null; if ([System.Net.IPAddress]::TryParse($candidate, [ref]$parsed)) { $parsed.ToString() } } } catch { }"`) do (
+        set "REMOTE_HOST_IP=%%A"
+        goto :AFTER_REMOTE_IP_SCAN
+    )
+)
+
+:AFTER_REMOTE_IP_SCAN
+
+if defined POWERSHELL_CMD if not defined REMOTE_HOST_IP if defined REMOTE_HOST (
+    for /f "usebackq tokens=*" %%A in (`%POWERSHELL_CMD% -NoProfile -Command "try { $parsed = $null; if ([System.Net.IPAddress]::TryParse('\"%REMOTE_HOST%\"', [ref]$parsed)) { $parsed.ToString() } } catch { }"`) do (
+        set "REMOTE_HOST_IP=%%A"
+        goto :AFTER_REMOTE_IP_VALIDATE
+    )
+)
+
+:AFTER_REMOTE_IP_VALIDATE
 
 REM Prepare JSON payload file
 set "TEMP_PAYLOAD=%TEMP%\session_payload_%RANDOM%%RANDOM%.json"
@@ -108,6 +151,8 @@ if defined SESSION_NAME (
 
 if /I "%REMOTE_CONTROLLED%"=="true" (
     >> "%TEMP_PAYLOAD%" echo   "remoteControlled": true,
+) else if /I "%REMOTE_CONTROLLED%"=="false" (
+    >> "%TEMP_PAYLOAD%" echo   "remoteControlled": false,
 ) else (
     >> "%TEMP_PAYLOAD%" echo   "remoteControlled": null,
 )
@@ -126,11 +171,6 @@ curl -s --fail --show-error -X POST -H "Content-Type: application/json" -d @"%TE
 set "CURL_EXIT=%ERRORLEVEL%"
 
 del "%TEMP_PAYLOAD%" >NUL 2>&1
+set "EXIT_CODE=%CURL_EXIT%"
 
-if not "%CURL_EXIT%"=="0" (
-    echo Failed to send session heartbeat. Curl exited with code %CURL_EXIT%.
-    exit /b %CURL_EXIT%
-)
-
-echo Session heartbeat sent successfully.
-endlocal
+endlocal & exit /b %EXIT_CODE%

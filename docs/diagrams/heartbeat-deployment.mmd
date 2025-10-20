@@ -1,19 +1,20 @@
 graph LR
     subgraph Monitoring_Server["監視サーバ\n(OS + Heartbeat Collector)"]
         Collector["Heartbeat Collector Service"]
-        Store["状態ストア\n(メモリ or DB)"]
+        Store["状態ストア / アラート機構"]
     end
 
-    subgraph Monitored_Node_A["監視対象ノード A\n(OS + Heartbeat Agent)"]
-        AgentA["Heartbeat Agent"]
-        AppA["アプリケーションA"]
+    subgraph Monitored_Node["監視対象ノード\n(Windows + ハートビートエージェント)"]
+        TaskScheduler["Windows タスク スケジューラ"]
+        SaveScript["save_remote_endpoint\n(.ps1 / .bat)"]
+        Metadata["%ProgramData%\\Rdpstste\\remote-session.json"]
+        Heartbeat["session_notify\n(.ps1 / .bat)"]
+        App["業務アプリケーション"]
     end
 
-    subgraph Monitored_Node_B["監視対象ノード B\n(OS + Heartbeat Agent)"]
-        AgentB["Heartbeat Agent"]
-        AppB["アプリケーションB"]
-    end
-
-    AgentA -- "5分おきのハートビート\n(HTTP(S)/gRPC 等)" --> Collector
-    AgentB -- "5分おきのハートビート\n(HTTP(S)/gRPC 等)" --> Collector
+    TaskScheduler -- "ログオン時トリガー" --> SaveScript
+    SaveScript -- "接続元ホスト/IP\nセッション情報を書き出す" --> Metadata
+    TaskScheduler -- "5分ごとのトリガー" --> Heartbeat
+    Heartbeat -- "保存済みメタデータ読み込み\n(フォールバック: ライブ検出)" --> Metadata
+    Heartbeat -- "ハートビート送信\n(HTTP(S)/gRPC 等)" --> Collector
     Collector -- "状態更新・異常検知" --> Store
