@@ -110,3 +110,34 @@ sequenceDiagram
 ```
 
 シーケンス図の元データは [`docs/diagrams/session-events-sequence.mmd`](./diagrams/session-events-sequence.mmd) です。`session_start_event` は接続直後の開始イベントを記録し、`session_notify` の自動ハートビートや `session_heartbeat_event` の詳細なアイドル情報と組み合わせることで、セッション開始〜継続〜終了のライフサイクルを追跡できます。切断時には `session_end_event` が終了ログと稼働指標 (任意) を送信し、ダッシュボードや Slack 通知に反映されます。
+
+## 状態遷移図 (State Diagram)
+
+セッション状態の遷移を、接続 (`connected`)、切断 (`disconnected`)、使用中 (`in-use`)、アイドル (`idle`) の 4 つに整理しました。イベントの種別とトリガーとなる REST API 呼び出しを並記しているため、どの操作がどの状態遷移を引き起こすのかを一目で確認できます。
+
+```mermaid
+%%{init: {'flowchart': {'curve': 'basis'}} }%%
+stateDiagram-v2
+    direction LR
+
+    [*] --> Disconnected
+
+    Disconnected --> Connected: session_start_event\nPOST /api/sessions/start
+    Disconnected --> Connected: session_notify\nPOST /api/sessions/auto-heartbeat
+
+    Connected --> InUse: session_notify / session_heartbeat_event\nアクティビティあり
+    Connected --> Idle: session_notify / session_heartbeat_event\nアイドル判定あり
+
+    InUse --> Idle: session_notify / session_heartbeat_event\n一定時間操作なし
+    Idle --> InUse: session_notify / session_heartbeat_event\nユーザー操作再開
+
+    InUse --> Disconnected: session_end_event\nPOST /api/sessions/end
+    InUse --> Disconnected: 管理者操作\nPUT /api/sessions/{id} status=disconnected
+    InUse --> Disconnected: ハートビート途絶\nタイムアウト判定
+
+    Idle --> Disconnected: session_end_event / 管理者操作\nまたはハートビート途絶
+
+    Connected --> Disconnected: 管理者操作\nPUT /api/sessions/{id} status=disconnected
+```
+
+状態遷移図のソースは [`docs/diagrams/session-state-machine.mmd`](./diagrams/session-state-machine.mmd) に保存しています。ハートビートが継続して受信できている間は `connected` を維持しつつ、アイドル時間のしきい値を超えたかどうかで `in-use` と `idle` を行き来します。`session_end_event` や管理者による手動ステータス変更、またはハートビートのタイムアウトにより `disconnected` へ遷移し、次回の接続イベントが新しいサイクルを開始します。
