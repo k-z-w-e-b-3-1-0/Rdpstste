@@ -2,8 +2,17 @@
 setlocal enabledelayedexpansion
 
 REM Configuration
-set "SERVER=http://監視サーバーのアドレス:3000"
-set "ENDPOINT=%SERVER%/api/sessions/auto-heartbeat"
+if "%~1"=="" (
+    echo Usage: %~nx0 ^<server_url^>
+    exit /b 1
+)
+
+set "SERVER=%~1"
+if "%SERVER:~-1%"=="/" (
+    set "ENDPOINT=%SERVER%api/sessions/auto-heartbeat"
+) else (
+    set "ENDPOINT=%SERVER%/api/sessions/auto-heartbeat"
+)
 set "TARGET_PROCESSES=mstsc.exe custom-tool.exe"
 
 REM Build comma-separated list of expected processes
@@ -49,7 +58,7 @@ for %%S in (powershell pwsh) do (
 goto :AFTER_REMOTE_IP_SCAN
 
 :FOUND_POWERSHELL
-for /f "usebackq tokens=*" %%A in (`!POWERSHELL_CMD! -NoProfile -Command "try { $conn = Get-NetTCPConnection -State Established -LocalPort 3389 | Select-Object -First 1; if ($conn) { $conn.RemoteAddress } } catch { }"`) do (
+for /f "usebackq tokens=*" %%A in (`!POWERSHELL_CMD! -NoProfile -Command "try { $conn = Get-NetTCPConnection -State Established -LocalPort 3389 | Select-Object -First 1; if ($conn -and $conn.RemoteAddress) { $candidate = $conn.RemoteAddress.ToString(); $parsed = $null; if ([System.Net.IPAddress]::TryParse($candidate, [ref]$parsed)) { $parsed.ToString() } } } catch { }"`) do (
     set "REMOTE_HOST_IP=%%A"
     goto :AFTER_REMOTE_IP_SCAN
 )
