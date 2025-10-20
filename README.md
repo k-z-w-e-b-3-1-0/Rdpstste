@@ -139,6 +139,26 @@ Invoke-WebRequest -UseBasicParsing \
 
 サーバー側ではアクセス元 IP を自動検出し、セッションが未登録なら作成、既存なら最終確認時刻とプロセス状態を更新します。タスクスケジューラで数分おきに実行すれば、監視対象側に常駐アプリを導入することなくリモートアクセス状況とプロセス稼働を同時に把握できます。
 
+#### ログオン時に接続元情報を保存する
+
+リモートデスクトップ経由でログオンした直後に接続元ホスト名や IP アドレス、セッション名、遠隔操作フラグ (`remoteControlled`) を記録しておくと、タスクスケジューラで SYSTEM アカウントからハートビートを送信する場合でも正しい値を引き継げます。以下のいずれかをログオン スクリプトとして登録し、ユーザー セッションで実行してください。
+
+- PowerShell 版: `scripts/save_remote_endpoint.ps1`
+- バッチ ファイル版: `scripts/save_remote_endpoint.bat`
+
+どちらも既定では `%ProgramData%\Rdpstste\remote-session.json` に最新情報を保存し、`session_notify.bat` / `session_notify.ps1` はこのファイルが存在する場合に内容を読み取ってリクエストに含めます。PowerShell 版を直接呼び出す場合は次のように実行します。
+
+```powershell
+# グループポリシーやタスクスケジューラの「ログオン時」に登録して実行
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\path\to\scripts\save_remote_endpoint.ps1"
+```
+
+保存される JSON のサンプルは `data/remote-session.sample.json` を参照してください。
+
+バッチ版は同梱の PowerShell スクリプトを内部で呼び出しているため、タスクスケジューラからは単に `save_remote_endpoint.bat` を指定するだけで同じ結果が得られます。セキュリティ ポリシーで PowerShell のスクリプト実行が禁止されている場合は、自動的にバッチのみで取得できる最小限の情報 (接続元ホスト、IP、セッション名、遠隔操作フラグ) を JSON に保存するフォールバック処理へ切り替わります。
+
+記録ファイルが存在しない、または解析できなかった場合は従来どおり実行時に取得した `CLIENTNAME` や `Get-NetTCPConnection` の結果を利用します。
+
 ### Slack 通知
 
 環境変数 `SLACK_WEBHOOK_URL` に Incoming Webhook の URL を設定すると、以下のタイミングで Slack に通知が送信されます。

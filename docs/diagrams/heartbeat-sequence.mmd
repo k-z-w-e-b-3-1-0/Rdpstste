@@ -1,21 +1,24 @@
 sequenceDiagram
-    participant AgentA as Heartbeat Agent (Node A)
-    participant AgentB as Heartbeat Agent (Node B)
-    participant Collector as Heartbeat Collector
-    participant Store as 状態ストア/アラート機構
+    actor User as リモートユーザー
+    participant TSLogon as タスク スケジューラ<br/>(ログオン タスク)
+    participant SaveScript as save_remote_endpoint<br/>(.ps1 / .bat)
+    participant Metadata as %ProgramData%\\Rdpstste\\remote-session.json
+    participant TSHeartbeat as タスク スケジューラ<br/>(定期ハートビート)
+    participant Heartbeat as session_notify<br/>(.ps1 / .bat)
+    participant Collector as ハートビート Collector
+
+    User->>TSLogon: Windows へログオン
+    TSLogon->>SaveScript: ログオン時タスクを起動
+    SaveScript->>Metadata: 接続元ホスト/IP\nセッション情報を保存
+    Note over SaveScript,Metadata: PowerShell が使用できない場合は\nバッチフォールバックで JSON を生成
 
     loop 5分毎
-        AgentA->>Collector: ハートビート送信 (稼働状態・メタ情報)
-        Collector-->>AgentA: ACK / 受信完了
-        Collector->>Store: Node A の状態更新
-
-        AgentB->>Collector: ハートビート送信 (稼働状態・メタ情報)
-        Collector-->>AgentB: ACK / 受信完了
-        Collector->>Store: Node B の状態更新
-
-        alt ハートビート欠落判定
-            Collector->>Store: アラート生成 / SLA 記録
-        else 正常稼働
-            Collector->>Store: 正常ログ記録
+        TSHeartbeat->>Heartbeat: ハートビートタスクを起動
+        Heartbeat->>Metadata: remote-session.json を読み込み
+        alt 保存済みメタデータあり
+            Heartbeat->>Collector: 保存済みの接続情報を付加して送信
+        else ファイルなし/失敗
+            Heartbeat->>Collector: ライブ検出 or 空値で送信
         end
+        Collector-->>Heartbeat: ACK / 結果応答
     end
