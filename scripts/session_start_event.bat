@@ -7,7 +7,12 @@ if "%~1"=="" (
 )
 
 set "SERVER_URL=%~1"
-shift
+set "ALL_ARGS=%*"
+set "REMAINING_ARGS="
+
+for /f "tokens=1* delims= " %%A in ("!ALL_ARGS!") do (
+    if not "%%B"=="" set "REMAINING_ARGS=%%B"
+)
 
 set "SCRIPT_DIR=%~dp0"
 set "PS_SCRIPT=%SCRIPT_DIR%session_start_event.ps1"
@@ -25,5 +30,9 @@ echo PowerShell executable not found.
 exit /b 1
 
 :FOUND_PS
-"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" -ServerUrl "%SERVER_URL%" %*
+if defined REMAINING_ARGS (
+    "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" -ServerUrl "%SERVER_URL%" !REMAINING_ARGS!
+) else (
+    "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" -ServerUrl "%SERVER_URL%"
+)
 exit /b %ERRORLEVEL%

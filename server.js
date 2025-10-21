@@ -235,6 +235,117 @@ function normalizeProcessStatuses(value) {
   return normalized.filter(entry => entry.name.length > 0);
 }
 
+function toOptionalString(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
+}
+
+function toOptionalNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function sanitizeEventPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return {};
+  }
+  try {
+    return JSON.parse(JSON.stringify(payload));
+  } catch (error) {
+    const sanitized = {};
+    Object.keys(payload).forEach(key => {
+      const value = payload[key];
+      if (
+        value === null ||
+        value === undefined ||
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+      ) {
+        sanitized[key] = value;
+      } else if (Array.isArray(value)) {
+        sanitized[key] = value
+          .map(entry =>
+            entry === null ||
+            entry === undefined ||
+            typeof entry === 'string' ||
+            typeof entry === 'number' ||
+            typeof entry === 'boolean'
+              ? entry
+              : null
+          )
+          .filter(entry => entry !== null);
+      } else if (typeof value === 'object') {
+        sanitized[key] = sanitizeEventPayload(value);
+      }
+    });
+    return sanitized;
+  }
+}
+
+function sanitizeResourceMetrics(value) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const metrics = {};
+  const cpuSeconds = toOptionalNumber(value.cpuTimeSeconds ?? value.cpuSeconds);
+  if (cpuSeconds !== null) {
+    metrics.cpuTimeSeconds = cpuSeconds;
+  }
+  const workingSet = toOptionalNumber(value.workingSetBytes ?? value.workingSet);
+  if (workingSet !== null) {
+    metrics.workingSetBytes = Math.max(0, Math.trunc(workingSet));
+  }
+  if (value.processCount !== undefined) {
+    const processCount = Number(value.processCount);
+    if (Number.isFinite(processCount)) {
+      metrics.processCount = Math.max(0, Math.round(processCount));
+    }
+  }
+  return Object.keys(metrics).length > 0 ? metrics : null;
+}
+
+function findSessionForEvent(sessions, identifiers) {
+  if (!Array.isArray(sessions)) {
+    return null;
+  }
+  const sessionId = toOptionalString(identifiers?.sessionId);
+  const resourceId = toOptionalString(identifiers?.resourceId);
+  if (sessionId) {
+    const sessionIdLower = sessionId.toLowerCase();
+    let match = sessions.find(session =>
+      typeof session.externalSessionId === 'string' &&
+      session.externalSessionId.trim().toLowerCase() === sessionIdLower
+    );
+    if (match) {
+      return match;
+    }
+    match = sessions.find(session =>
+      typeof session.id === 'string' && session.id.trim().toLowerCase() === sessionIdLower
+    );
+    if (match) {
+      return match;
+    }
+  }
+  if (resourceId) {
+    const resourceIdLower = resourceId.toLowerCase();
+    const match = sessions.find(session =>
+      typeof session.hostname === 'string' &&
+      session.hostname.trim().toLowerCase() === resourceIdLower
+    );
+    if (match) {
+      return match;
+    }
+  }
+  return null;
+}
+
 function isLikelyIp(value) {
   if (typeof value !== 'string') {
     return false;
@@ -290,17 +401,67 @@ function ensureDataFile() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
   if (!fs.existsSync(DATA_PATH)) {
-    fs.writeFileSync(DATA_PATH, JSON.stringify({ sessions: [] }, null, 2));
+    fs.writeFileSync(
+      DATA_PATH,
+      JSON.stringify({ sessions: [], sessionEvents: [] }, null, 2)
+    );
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(DATA_PATH, 'utf-8'));
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Invalid JSON structure');
+    }
+    if (!Array.isArray(parsed.sessions) || !Array.isArray(parsed.sessionEvents)) {
+      const normalized = {
+        sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+        sessionEvents: Array.isArray(parsed.sessionEvents)
+          ? parsed.sessionEvents
+          : [],
+      };
+      fs.writeFileSync(DATA_PATH, JSON.stringify(normalized, null, 2));
+    }
+  } catch (error) {
+    fs.writeFileSync(
+      DATA_PATH,
+      JSON.stringify({ sessions: [], sessionEvents: [] }, null, 2)
+    );
   }
 }
 
-function loadSessions() {
+function loadDataFile() {
   ensureDataFile();
-  const raw = fs.readFileSync(DATA_PATH, 'utf-8');
   try {
+    const raw = fs.readFileSync(DATA_PATH, 'utf-8');
     const data = JSON.parse(raw);
-    if (Array.isArray(data.sessions)) {
-      return data.sessions.map(session => {
+    const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    const sessionEvents = Array.isArray(data.sessionEvents)
+      ? data.sessionEvents
+      : [];
+    return { sessions, sessionEvents };
+  } catch (error) {
+    return { sessions: [], sessionEvents: [] };
+  }
+}
+
+function saveDataFile(data) {
+  ensureDataFile();
+  const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+  const sessionEvents = Array.isArray(data.sessionEvents)
+    ? data.sessionEvents
+    : [];
+  fs.writeFileSync(
+    DATA_PATH,
+    JSON.stringify({ sessions, sessionEvents }, null, 2)
+  );
+}
+
+function loadSessions() {
+  const { sessions } = loadDataFile();
+  try {
+    if (Array.isArray(sessions)) {
+      return sessions.map(session => {
         if (!session || typeof session !== 'object') {
           return session;
         }
@@ -351,6 +512,29 @@ function loadSessions() {
             })
             .filter(entry => entry.name.length > 0);
         }
+        if (typeof normalized.startedAt !== 'string') {
+          normalized.startedAt = null;
+        }
+        if (typeof normalized.endedAt !== 'string') {
+          normalized.endedAt = null;
+        }
+        if (typeof normalized.externalSessionId !== 'string') {
+          normalized.externalSessionId = null;
+        }
+        if (typeof normalized.disconnectReason !== 'string') {
+          normalized.disconnectReason = '';
+        }
+        if (
+          normalized.lastIdleSeconds !== null &&
+          normalized.lastIdleSeconds !== undefined
+        ) {
+          const parsed = Number(normalized.lastIdleSeconds);
+          normalized.lastIdleSeconds = Number.isFinite(parsed)
+            ? parsed
+            : null;
+        } else {
+          normalized.lastIdleSeconds = null;
+        }
         return normalized;
       });
     }
@@ -360,9 +544,33 @@ function loadSessions() {
   return [];
 }
 
-function saveSessions(sessions) {
-  ensureDataFile();
-  fs.writeFileSync(DATA_PATH, JSON.stringify({ sessions }, null, 2));
+function loadSessionEvents() {
+  const { sessionEvents } = loadDataFile();
+  if (!Array.isArray(sessionEvents)) {
+    return [];
+  }
+  return sessionEvents
+    .map(entry => {
+      if (!entry || typeof entry !== 'object') {
+        return null;
+      }
+      const normalized = { ...entry };
+      normalized.id = typeof normalized.id === 'string' ? normalized.id : randomUUID();
+      normalized.type = typeof normalized.type === 'string' ? normalized.type : 'unknown';
+      normalized.timestamp =
+        typeof normalized.timestamp === 'string'
+          ? normalized.timestamp
+          : new Date().toISOString();
+      return normalized;
+    })
+    .filter(Boolean);
+}
+
+function saveSessions(sessions, sessionEvents = undefined) {
+  const existing = loadDataFile();
+  const eventsToSave =
+    sessionEvents === undefined ? existing.sessionEvents : sessionEvents;
+  saveDataFile({ sessions, sessionEvents: eventsToSave });
 }
 
 function sendJSON(res, statusCode, payload) {
@@ -693,6 +901,152 @@ const server = http.createServer(async (req, res) => {
           await notifySessionEvent(eventType, session, { trigger: 'auto-heartbeat' });
         }
         sendJSON(res, 200, { session });
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/sessions/start') {
+        const payload = await collectRequestData(req);
+        const timestamp = new Date().toISOString();
+        const sessionId = toOptionalString(payload.sessionId ?? payload.sessionName);
+        const resourceId = toOptionalString(payload.resourceId ?? payload.hostname);
+        const userId = toOptionalString(payload.userId ?? payload.username);
+        const channel = toOptionalString(payload.channel);
+        const clientEnvironmentPayload =
+          payload && typeof payload.clientEnvironment === 'object'
+            ? payload.clientEnvironment
+            : {};
+        const clientEnvironment = {};
+        const clientOs =
+          toOptionalString(clientEnvironmentPayload.operatingSystem) ||
+          toOptionalString(payload.clientOperatingSystem);
+        const clientApp =
+          toOptionalString(clientEnvironmentPayload.application) ||
+          toOptionalString(payload.clientApplication);
+        if (clientOs) {
+          clientEnvironment.operatingSystem = clientOs;
+        }
+        if (clientApp) {
+          clientEnvironment.application = clientApp;
+        }
+        const mfaResult = toOptionalString(
+          payload?.authentication && typeof payload.authentication === 'object'
+            ? payload.authentication.mfa
+            : payload?.mfaResult
+        );
+
+        const sessions = loadSessions();
+        const sessionEvents = loadSessionEvents();
+
+        const event = {
+          id: randomUUID(),
+          type: 'session.start',
+          timestamp,
+          sessionId,
+          resourceId,
+          userId,
+        };
+        if (channel) {
+          event.channel = channel;
+        }
+        if (Object.keys(clientEnvironment).length > 0) {
+          event.clientEnvironment = clientEnvironment;
+        }
+        if (mfaResult) {
+          event.mfaResult = mfaResult;
+        }
+        if (payload && typeof payload === 'object') {
+          event.payload = sanitizeEventPayload(payload);
+        }
+
+        sessionEvents.push(event);
+
+        const targetSession = findSessionForEvent(sessions, { sessionId, resourceId });
+        if (targetSession) {
+          if (sessionId) {
+            targetSession.externalSessionId = sessionId;
+          }
+          if (userId && !targetSession.username) {
+            targetSession.username = userId;
+          }
+          targetSession.status = 'connected';
+          targetSession.lastUpdated = timestamp;
+          targetSession.lastSeen = timestamp;
+          targetSession.startedAt = timestamp;
+          targetSession.endedAt = null;
+          targetSession.disconnectReason = '';
+        }
+
+        saveSessions(sessions, sessionEvents);
+        sendJSON(res, 202, { accepted: true, eventId: event.id });
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/sessions/end') {
+        const payload = await collectRequestData(req);
+        const timestamp = new Date().toISOString();
+        const sessionId = toOptionalString(payload.sessionId ?? payload.sessionName);
+        const resourceId = toOptionalString(payload.resourceId ?? payload.hostname);
+        const userId = toOptionalString(payload.userId ?? payload.username);
+        const disconnectReason = toOptionalString(payload.disconnectReason);
+        const sessionDurationSeconds = toOptionalNumber(payload.sessionDurationSeconds);
+        const secondsSinceLastHeartbeat = toOptionalNumber(
+          payload.secondsSinceLastHeartbeat
+        );
+        const lastIdleSeconds = toOptionalNumber(payload.lastObservedIdleSeconds);
+        const resourceMetrics = sanitizeResourceMetrics(payload.resourceMetrics);
+
+        const sessions = loadSessions();
+        const sessionEvents = loadSessionEvents();
+
+        const event = {
+          id: randomUUID(),
+          type: 'session.end',
+          timestamp,
+          sessionId,
+          resourceId,
+          userId,
+        };
+        if (disconnectReason) {
+          event.disconnectReason = disconnectReason;
+        }
+        if (sessionDurationSeconds !== null) {
+          event.sessionDurationSeconds = sessionDurationSeconds;
+        }
+        if (secondsSinceLastHeartbeat !== null) {
+          event.secondsSinceLastHeartbeat = secondsSinceLastHeartbeat;
+        }
+        if (lastIdleSeconds !== null) {
+          event.lastObservedIdleSeconds = lastIdleSeconds;
+        }
+        if (resourceMetrics) {
+          event.resourceMetrics = resourceMetrics;
+        }
+        if (payload && typeof payload === 'object') {
+          event.payload = sanitizeEventPayload(payload);
+        }
+
+        sessionEvents.push(event);
+
+        const targetSession = findSessionForEvent(sessions, { sessionId, resourceId });
+        if (targetSession) {
+          targetSession.status = 'disconnected';
+          targetSession.lastUpdated = timestamp;
+          targetSession.lastSeen = timestamp;
+          targetSession.endedAt = timestamp;
+          if (disconnectReason) {
+            targetSession.disconnectReason = disconnectReason;
+          }
+          if (sessionId) {
+            targetSession.externalSessionId = sessionId;
+          }
+          if (userId && !targetSession.username) {
+            targetSession.username = userId;
+          }
+          targetSession.lastIdleSeconds = lastIdleSeconds;
+        }
+
+        saveSessions(sessions, sessionEvents);
+        sendJSON(res, 200, { accepted: true, eventId: event.id });
         return;
       }
 
