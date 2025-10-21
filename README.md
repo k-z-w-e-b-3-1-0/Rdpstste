@@ -7,7 +7,7 @@
 - 接続中 / 切断状態の端末を一覧表示
 - 接続数サマリーカードで全体の把握が可能
 - 新規端末の登録、状態の更新、削除に対応
-- 端末からの定期ハートビートで最終確認時刻を自動更新
+- ログオンやリモートセッション確立時のイベント通知で最新状況を記録
 - API を利用した外部スクリプト連携が可能
 - 監視対象に指定したプロセスの起動有無を可視化
 - リモート接続元端末やアクセス元 IP、ユーザー情報を記録して可視化
@@ -44,17 +44,16 @@ npm start
 | --- | --- | --- |
 | `GET` | `/api/sessions` | 登録済み端末を取得 |
 | `POST` | `/api/sessions` | 端末を新規登録。`hostname` と `ipAddress` は必須 |
-| `GET` / `POST` | `/api/sessions/auto-heartbeat` | リモート端末からのアクセスのみで IP 情報を基にセッションを自動作成・更新 |
+| `POST` | `/api/sessions/auto-heartbeat` | `session_notify` スクリプトのイベントでログオン / リモート接続を記録 |
 | `PUT` | `/api/sessions/{id}` | 端末情報や状態の更新 |
 | `DELETE` | `/api/sessions/{id}` | 端末を削除 |
-| `POST` | `/api/sessions/{id}/heartbeat` | 端末の最終確認時刻を現在時刻に更新し接続中として扱う |
 | `POST` | `/api/sessions/{id}/announce` | 指定端末の利用予定を Slack に通知 |
 
 ### フィールドの補足
 
 - `expectedProcesses`: 監視したいプロセス名の配列またはカンマ区切り文字列。ダッシュボードに「監視対象」として表示され、未起動の場合はアラート扱いになります。
 - `processStatuses`: `[{ "name": "mstsc.exe", "running": true }]` のような形式で、プロセスごとの稼働状況を明示的に送信したい場合に利用します。`lastChecked` はサーバー側で自動付与されます。
-- `runningProcesses` / `processes`: 自動ハートビート用の簡易指定。カンマ区切りまたは配列で現在起動中のプロセス名を送信すると、監視対象リストと突き合わせて稼働状況を判定します。
+- `runningProcesses` / `processes`: `session_notify` で送信する簡易指定。カンマ区切りまたは配列で現在起動中のプロセス名を送信すると、監視対象リストと突き合わせて稼働状況を判定します。
 - `remoteHost`: リモートデスクトップの接続元端末名や IP を記録する文字列。
 - `remoteHostIpAddress`: リモートデスクトップの接続元 IP アドレスを記録する文字列。
 - `remoteUser`: 接続してきたリモートユーザー名を記録する文字列 (例: `corp\\administrator`)。
@@ -76,12 +75,6 @@ curl -X POST http://localhost:3000/api/sessions \
   }'
 ```
 
-### 例: ハートビート送信
-
-```bash
-curl -X POST http://localhost:3000/api/sessions/<id>/heartbeat
-```
-
 ### 例: セッション ID の確認と指定
 
 セッション ID は UUID 形式で発行され、`GET /api/sessions` のレスポンスから取得できます。以下は `data/sessions.sample.json` の例に含まれる ID を使った操作イメージです。
@@ -101,18 +94,22 @@ curl -X PUT \
   -d '{"notes":"15時からメンテナンス予定"}'
 ```
 
-### 例: リモート端末からの自動ハートビート
+### 例: ログオン / リモートセッション確立時のセッション通知
 
-監視される端末側には追加インストールを求めない設計です。Windows 標準の PowerShell だけでハートビートを送信し、同時に監視対象プロセスの起動状況も報告できます。
+監視される端末側には追加インストールを求めない設計です。Windows 標準の PowerShell だけで、ログオン完了やリモートセッションが確立したタイミングで `session_notify` を送信し、同時に監視対象プロセスの起動状況も報告できます。
 
 ```powershell
 $server = "http://監視サーバーのアドレス:3000"
 $targetProcesses = "mstsc.exe","custom-tool.exe"
 
-$running = Get-Process |
-  Where-Object { $targetProcesses -contains ($_.ProcessName + ".exe") } |
-  Select-Object -ExpandProperty ProcessName
-$runningList = ($running | ForEach-Object { $_ + ".exe" }) -join ","
+if ($targetProcesses) {
+  $running = Get-Process |
+    Where-Object { $targetProcesses -contains ($_.ProcessName + ".exe") } |
+    Select-Object -ExpandProperty ProcessName
+  $runningList = ($running | ForEach-Object { $_ + ".exe" }) -join ","
+} else {
+  $runningList = $null
+}
 
 $remoteHost = if ($env:CLIENTNAME) { $env:CLIENTNAME } else { $null }
 $sessionName = if ($env:SESSIONNAME) { $env:SESSIONNAME } else { $null }
@@ -128,6 +125,8 @@ $payload = @{
   remoteControlled = $remoteControlled
   expectedProcesses = ($targetProcesses -join ",")
   runningProcesses = $runningList
+  eventType = "session.notify"
+  eventTrigger = if ($remoteControlled) { "remote-session" } else { "logon" }
 }
 
 Invoke-WebRequest -UseBasicParsing \
@@ -137,11 +136,32 @@ Invoke-WebRequest -UseBasicParsing \
   -Body ($payload | ConvertTo-Json)
 ```
 
-サーバー側ではアクセス元 IP を自動検出し、セッションが未登録なら作成、既存なら最終確認時刻とプロセス状態を更新します。タスクスケジューラで数分おきに実行すれば、監視対象側に常駐アプリを導入することなくリモートアクセス状況とプロセス稼働を同時に把握できます。
+サーバー側ではアクセス元 IP を自動検出し、セッションが未登録なら作成、既存ならログオン / リモート接続イベントとして更新します。イベント ビューアーの「ログオン」「セッション接続」などをトリガーにタスクスケジューラから呼び出すことで、常駐アプリを導入せずに利用状況を即時反映できます。
+
+### 例: ログオフ / セッション切断時の終了通知
+
+```powershell
+$server = "http://監視サーバーのアドレス:3000"
+
+$payload = @{
+  hostname = $env:COMPUTERNAME
+  username = $env:USERNAME
+  eventType = "session.end"
+  eventTrigger = "logoff"
+}
+
+Invoke-WebRequest -UseBasicParsing \
+  -Uri "${server}/api/sessions/end" \
+  -Method Post \
+  -ContentType "application/json" \
+  -Body ($payload | ConvertTo-Json)
+
+# ログオフ イベント ID 4634 などをトリガーに登録
+```
 
 #### ログオン時に接続元情報を保存する
 
-リモートデスクトップ経由でログオンした直後に接続元ホスト名や IP アドレス、セッション名、遠隔操作フラグ (`remoteControlled`) を記録しておくと、タスクスケジューラで SYSTEM アカウントからハートビートを送信する場合でも正しい値を引き継げます。以下のいずれかをログオン スクリプトとして登録し、ユーザー セッションで実行してください。
+リモートデスクトップ経由でログオンした直後に接続元ホスト名や IP アドレス、セッション名、遠隔操作フラグ (`remoteControlled`) を記録しておくと、イベント トリガーで `session_notify` を送信する際にも正しい値を引き継げます。以下のいずれかをログオン スクリプトとして登録し、ユーザー セッションで実行してください。
 
 - PowerShell 版: `scripts/save_remote_endpoint.ps1`
 - バッチ ファイル版: `scripts/save_remote_endpoint.bat`

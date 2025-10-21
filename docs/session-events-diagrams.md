@@ -1,10 +1,10 @@
-# 接続・切断・ハートビート イベントの図解
+# セッション通知 / 終了イベントの図解
 
-Rdpstste で扱う接続・切断・ハートビート、そしてセッション開始・終了イベントがどのように連携するかを、配置図とシーケンス図で整理しました。GitHub が Mermaid をサポートしているため、そのままスクロールするだけで図を表示できます。
+Rdpstste で扱う `session_notify` (ログオン / リモート接続) と `session_end_event` (切断 / ログオフ) がどのように連携するかを、配置図とシーケンス図で整理しました。GitHub が Mermaid をサポートしているため、そのままスクロールするだけで図を表示できます。
 
 ## サマリー
 
-- 接続時・定期的なハートビート送信・手動切断に加えて、`session_start_event` / `session_end_event` で収集する開始・終了イベントを図に追加しました。
+- 定期的なハートビートではなく、イベント駆動でセッションの開始と終了を記録する構成に更新しました。
 - 図の元データを Mermaid のソースファイルとして `docs/diagrams/` 以下に保存し、再利用しやすい形にしました。
 - 新しい図を本文に埋め込み、ドキュメントを読むだけでイベントの流れを把握できるようにしました。
 
@@ -14,9 +14,7 @@ Rdpstste で扱う接続・切断・ハートビート、そしてセッショ�
 graph LR
     subgraph MonitoredEndpoint["監視対象端末\n(Windows クライアント)"]
         TaskScheduler["タスク スケジューラ"]
-        SessionStart["session_start_event\n(.ps1 / .bat)"]
-        AutoHeartbeat["session_notify\n(.ps1 / .bat)"]
-        ManualHeartbeat["session_heartbeat_event\n(.ps1 / .bat)"]
+        Notify["session_notify\n(.ps1 / .bat)"]
         SessionEnd["session_end_event\n(.ps1 / .bat)"]
     end
 
@@ -31,34 +29,28 @@ graph LR
         Slack["Slack Webhook\n(任意)"]
     end
 
-    TaskScheduler -- "接続確立直後" --> SessionStart
-    TaskScheduler -- "接続時 / 定期トリガー" --> AutoHeartbeat
-    TaskScheduler -- "切断検知時" --> SessionEnd
-    AutoHeartbeat -- "POST /api/sessions/auto-heartbeat" --> API
-    ManualHeartbeat -- "POST /api/sessions/{id}/heartbeat" --> API
-    SessionStart -- "POST /api/sessions/start" --> API
+    TaskScheduler -- "ログオン / 接続検知時" --> Notify
+    TaskScheduler -- "ログオフ / 切断検知時" --> SessionEnd
+    Notify -- "POST /api/sessions/auto-heartbeat" --> API
     SessionEnd -- "POST /api/sessions/end" --> API
     Browser -- "PUT /api/sessions/{id}\n(status=disconnected)" --> API
     Browser -- "GET /api/sessions" --> API
-    API -- "開始/終了イベントを追記" --> Store
-    API -- "状態更新" --> Store
+    API -- "イベントを保存" --> Store
     API -- "一覧データ" --> Dashboard
     Dashboard -- "HTML/JS 配信" --> Browser
-    API -- "接続/開始/終了通知" --> Slack
-    API -- "最新セッション情報" --> AutoHeartbeat
+    API -- "接続/終了通知" --> Slack
+    API -- "最新セッション情報" --> Notify
     API -- "更新結果" --> Browser
 ```
 
-Mermaid 記法のソースは [`docs/diagrams/session-events-deployment.mmd`](./diagrams/session-events-deployment.mmd) に保存しています。図内で参照しているスクリプトやエンドポイントは、`scripts/` ディレクトリの PowerShell / バッチ ファイルと [`server.js`](../server.js) の REST API 実装に対応しています。`session_start_event` と `session_end_event` は、タスク スケジューラなどで接続直後・切断直後に実行し、サーバー側で開始・終了タイムスタンプを記録する想定です。
+Mermaid 記法のソースは [`docs/diagrams/session-events-deployment.mmd`](./diagrams/session-events-deployment.mmd) に保存しています。図内で参照しているスクリプトやエンドポイントは、`scripts/` ディレクトリの PowerShell / バッチ ファイルと [`server.js`](../server.js) の REST API 実装に対応しています。`session_notify` はログオンまたはリモートセッション確立のイベントから実行し、`session_end_event` はログオフやセッション切断の直後に呼び出して終了タイムスタンプを記録します。
 
 ## シーケンス図 (Sequence Diagram)
 
 ```mermaid
 sequenceDiagram
     participant Client as 監視対象端末
-    participant StartAgent as session_start_event(.ps1/.bat)
-    participant Agent as session_notify(.ps1/.bat)
-    participant Manual as session_heartbeat_event(.ps1/.bat)
+    participant NotifyAgent as session_notify(.ps1/.bat)
     participant EndAgent as session_end_event(.ps1/.bat)
     participant Api as Rdpstste REST API
     participant Store as sessions.json ストア
@@ -67,26 +59,12 @@ sequenceDiagram
     participant Slack as Slack Webhook(任意)
 
     rect rgb(250,245,232)
-        note over StartAgent,Api: セッション開始イベント
-        Client->>StartAgent: 認証完了 / ログオン直後
-        StartAgent->>Api: POST /api/sessions/start<br/>session.start ペイロード送信
-        Api->>Store: 開始ログを追記 / startedAt 更新
-        Api-->>StartAgent: 202 Accepted (イベント受領)
-        Api-->>Slack: 開始通知 (任意)
-    end
-
-    rect rgb(232,245,255)
-        note over Agent,Api: 接続状態更新 / ハートビート
-        Client->>Agent: タスクスケジューラで数分おきに実行
-        Agent->>Api: POST /api/sessions/auto-heartbeat<br/>接続メタデータ・lastSeen を送信
-        Api->>Store: セッション登録 or status=connected 更新
-        Api-->>Agent: 200 OK (セッション情報)
-        Api-->>Slack: 接続通知 (新規 or 状態変化)
-        loop 任意のタイミング
-            Manual->>Api: POST /api/sessions/{id}/heartbeat<br/>session.heartbeat イベント送信
-            Api->>Store: lastSeen・idle 情報を更新
-            Api-->>Manual: 200 OK
-        end
+        note over NotifyAgent,Api: セッション通知イベント
+        Client->>NotifyAgent: ログオン / リモート接続検知
+        NotifyAgent->>Api: POST /api/sessions/auto-heartbeat<br/>session.notify ペイロード送信
+        Api->>Store: セッションを作成 or 更新 (status=connected)
+        Api-->>NotifyAgent: 200 OK (セッション情報)
+        Api-->>Slack: 接続通知 (任意)
     end
 
     rect rgb(255,244,240)
@@ -109,11 +87,11 @@ sequenceDiagram
     Note over Browser,Api: ダッシュボードは30秒ごとに<br/>GET /api/sessions で最新状態を取得
 ```
 
-シーケンス図の元データは [`docs/diagrams/session-events-sequence.mmd`](./diagrams/session-events-sequence.mmd) です。`session_start_event` は接続直後の開始イベントを記録し、`session_notify` の自動ハートビートや `session_heartbeat_event` の詳細なアイドル情報と組み合わせることで、セッション開始〜継続〜終了のライフサイクルを追跡できます。切断時には `session_end_event` が終了ログと稼働指標 (任意) を送信し、ダッシュボードや Slack 通知に反映されます。
+シーケンス図の元データは [`docs/diagrams/session-events-sequence.mmd`](./diagrams/session-events-sequence.mmd) です。`session_notify` はログオンやリモート接続を検知したタイミングでセッション情報をサーバーへ送り、`session_end_event` が終了ログを確実に記録することで、セッションのライフサイクルをイベントだけで追跡できます。手動ステータス変更はバックアップ手段として残し、イベントが届かない場合の補正に活用します。
 
 ## 状態遷移図 (State Diagram)
 
-セッション状態の遷移を、接続 (`connected`)、切断 (`disconnected`)、使用中 (`in-use`)、アイドル (`idle`) の 4 つに整理しました。イベントの種別とトリガーとなる REST API 呼び出しを並記しているため、どの操作がどの状態遷移を引き起こすのかを一目で確認できます。
+イベント駆動型では「接続中」と「切断済み」をシンプルに扱い、通知から終了までを一意に追跡します。
 
 ```mermaid
 %%{init: {'flowchart': {'curve': 'basis'}} }%%
@@ -122,22 +100,10 @@ stateDiagram-v2
 
     [*] --> Disconnected
 
-    Disconnected --> Connected: session_start_event\nPOST /api/sessions/start
     Disconnected --> Connected: session_notify\nPOST /api/sessions/auto-heartbeat
 
-    Connected --> InUse: session_notify / session_heartbeat_event\nアクティビティあり
-    Connected --> Idle: session_notify / session_heartbeat_event\nアイドル判定あり
-
-    InUse --> Idle: session_notify / session_heartbeat_event\n一定時間操作なし
-    Idle --> InUse: session_notify / session_heartbeat_event\nユーザー操作再開
-
-    InUse --> Disconnected: session_end_event\nPOST /api/sessions/end
-    InUse --> Disconnected: 管理者操作\nPUT /api/sessions/{id} status=disconnected
-    InUse --> Disconnected: ハートビート途絶\nタイムアウト判定
-
-    Idle --> Disconnected: session_end_event / 管理者操作\nまたはハートビート途絶
-
+    Connected --> Disconnected: session_end_event\nPOST /api/sessions/end
     Connected --> Disconnected: 管理者操作\nPUT /api/sessions/{id} status=disconnected
 ```
 
-状態遷移図のソースは [`docs/diagrams/session-state-machine.mmd`](./diagrams/session-state-machine.mmd) に保存しています。ハートビートが継続して受信できている間は `connected` を維持しつつ、アイドル時間のしきい値を超えたかどうかで `in-use` と `idle` を行き来します。`session_end_event` や管理者による手動ステータス変更、またはハートビートのタイムアウトにより `disconnected` へ遷移し、次回の接続イベントが新しいサイクルを開始します。
+状態遷移図のソースは [`docs/diagrams/session-state-machine.mmd`](./diagrams/session-state-machine.mmd) に保存しています。イベントが届いたタイミングで状態が遷移するため、定期的なハートビートを待たなくてもログオン直後の状況やログオフ直後の切断がダッシュボードへ即時反映されます。
