@@ -1,20 +1,31 @@
 graph LR
-    subgraph Monitoring_Server["監視サーバ\n(OS + Heartbeat Collector)"]
-        Collector["Heartbeat Collector Service"]
-        Store["状態ストア / アラート機構"]
+    subgraph MonitoringServer["監視サーバ\n(Event Collector)"]
+        Collector["イベント Collector"]
+        Store["セッション状態ストア"]
     end
 
-    subgraph Monitored_Node["監視対象ノード\n(Windows + ハートビートエージェント)"]
-        TaskScheduler["Windows タスク スケジューラ"]
-        SaveScript["save_remote_endpoint\n(.ps1 / .bat)"]
-        Metadata["%ProgramData%\\Rdpstste\\remote-session.json"]
-        Heartbeat["session_notify\n(.ps1 / .bat)"]
-        App["業務アプリケーション"]
+    subgraph Monitored_Node_A["監視対象ノード A\n(Windows + イベントスクリプト)"]
+        LogonA["ログオン トリガー"]
+        RemoteA["リモート接続検知"]
+        NotifyA["session_notify\n(.ps1 / .bat)"]
+        EndA["session_end_event\n(.ps1 / .bat)"]
     end
 
-    TaskScheduler -- "ログオン時トリガー" --> SaveScript
-    SaveScript -- "接続元ホスト/IP\nセッション情報を書き出す" --> Metadata
-    TaskScheduler -- "5分ごとのトリガー" --> Heartbeat
-    Heartbeat -- "保存済みメタデータ読み込み\n(フォールバック: ライブ検出)" --> Metadata
-    Heartbeat -- "ハートビート送信\n(HTTP(S)/gRPC 等)" --> Collector
-    Collector -- "状態更新・異常検知" --> Store
+    subgraph Monitored_Node_B["監視対象ノード B\n(Windows + イベントスクリプト)"]
+        LogonB["ログオン トリガー"]
+        RemoteB["リモート接続検知"]
+        NotifyB["session_notify\n(.ps1 / .bat)"]
+        EndB["session_end_event\n(.ps1 / .bat)"]
+    end
+
+    LogonA -- "ログオン / 接続確立" --> NotifyA
+    RemoteA -- "RDP セッション確立" --> NotifyA
+    NotifyA -- "session.notify\nPOST /api/sessions/auto-heartbeat" --> Collector
+    EndA -- "session.end\nPOST /api/sessions/end" --> Collector
+
+    LogonB -- "ログオン / 接続確立" --> NotifyB
+    RemoteB -- "RDP セッション確立" --> NotifyB
+    NotifyB -- "session.notify\nPOST /api/sessions/auto-heartbeat" --> Collector
+    EndB -- "session.end\nPOST /api/sessions/end" --> Collector
+
+    Collector -- "状態更新" --> Store

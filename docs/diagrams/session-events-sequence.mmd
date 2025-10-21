@@ -1,8 +1,6 @@
 sequenceDiagram
     participant Client as 監視対象端末
-    participant StartAgent as session_start_event(.ps1/.bat)
-    participant Agent as session_notify(.ps1/.bat)
-    participant Manual as session_heartbeat_event(.ps1/.bat)
+    participant NotifyAgent as session_notify(.ps1/.bat)
     participant EndAgent as session_end_event(.ps1/.bat)
     participant Api as Rdpstste REST API
     participant Store as sessions.json ストア
@@ -11,26 +9,12 @@ sequenceDiagram
     participant Slack as Slack Webhook(任意)
 
     rect rgb(250,245,232)
-        note over StartAgent,Api: セッション開始イベント
-        Client->>StartAgent: 認証完了 / ログオン直後
-        StartAgent->>Api: POST /api/sessions/start<br/>session.start ペイロード送信
-        Api->>Store: 開始ログを追記 / startedAt 更新
-        Api-->>StartAgent: 202 Accepted (イベント受領)
-        Api-->>Slack: 開始通知 (任意)
-    end
-
-    rect rgb(232,245,255)
-        note over Agent,Api: 接続状態更新 / ハートビート
-        Client->>Agent: タスクスケジューラで数分おきに実行
-        Agent->>Api: POST /api/sessions/auto-heartbeat<br/>接続メタデータ・lastSeen を送信
-        Api->>Store: セッション登録 or status=connected 更新
-        Api-->>Agent: 200 OK (セッション情報)
-        Api-->>Slack: 接続通知 (新規 or 状態変化)
-        loop 任意のタイミング
-            Manual->>Api: POST /api/sessions/{id}/heartbeat<br/>session.heartbeat イベント送信
-            Api->>Store: lastSeen・idle 情報を更新
-            Api-->>Manual: 200 OK
-        end
+        note over NotifyAgent,Api: セッション通知イベント
+        Client->>NotifyAgent: ログオン / リモート接続検知
+        NotifyAgent->>Api: POST /api/sessions/auto-heartbeat<br/>session.notify ペイロード送信
+        Api->>Store: セッションを作成 or 更新 (status=connected)
+        Api-->>NotifyAgent: 200 OK (セッション情報)
+        Api-->>Slack: 接続通知 (任意)
     end
 
     rect rgb(255,244,240)

@@ -1,24 +1,23 @@
 sequenceDiagram
-    actor User as リモートユーザー
-    participant TSLogon as タスク スケジューラ<br/>(ログオン タスク)
-    participant SaveScript as save_remote_endpoint<br/>(.ps1 / .bat)
-    participant Metadata as %ProgramData%\\Rdpstste\\remote-session.json
-    participant TSHeartbeat as タスク スケジューラ<br/>(定期ハートビート)
-    participant Heartbeat as session_notify<br/>(.ps1 / .bat)
-    participant Collector as ハートビート Collector
+    participant User as 利用者
+    participant Client as 監視対象端末
+    participant LogonTask as ログオンイベント
+    participant Notify as session_notify(.ps1/.bat)
+    participant EndTask as ログオフ/切断イベント
+    participant EndAgent as session_end_event(.ps1/.bat)
+    participant Collector as イベント Collector
+    participant Store as 状態ストア
 
-    User->>TSLogon: Windows へログオン
-    TSLogon->>SaveScript: ログオン時タスクを起動
-    SaveScript->>Metadata: 接続元ホスト/IP\nセッション情報を保存
-    Note over SaveScript,Metadata: PowerShell が使用できない場合は\nバッチフォールバックで JSON を生成
+    User->>Client: ログオン / リモート接続
+    Client->>LogonTask: タスク トリガーを発火
+    LogonTask->>Notify: `session_notify` スクリプトを実行
+    Notify->>Collector: POST /api/sessions/auto-heartbeat
+    Collector->>Store: セッションを作成 or 更新 (status=connected)
+    Collector-->>Notify: 200 OK / 受領完了
 
-    loop 5分毎
-        TSHeartbeat->>Heartbeat: ハートビートタスクを起動
-        Heartbeat->>Metadata: remote-session.json を読み込み
-        alt 保存済みメタデータあり
-            Heartbeat->>Collector: 保存済みの接続情報を付加して送信
-        else ファイルなし/失敗
-            Heartbeat->>Collector: ライブ検出 or 空値で送信
-        end
-        Collector-->>Heartbeat: ACK / 結果応答
-    end
+    User->>Client: ログオフ / セッション切断
+    Client->>EndTask: 切断イベントを検知
+    EndTask->>EndAgent: `session_end_event` スクリプトを実行
+    EndAgent->>Collector: POST /api/sessions/end
+    Collector->>Store: status=disconnected / endedAt 記録
+    Collector-->>EndAgent: 200 OK / 受領完了
