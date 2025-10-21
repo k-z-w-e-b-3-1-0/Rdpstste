@@ -42,10 +42,7 @@
                 <th>IPアドレス</th>
                 <th>利用者</th>
                 <th>アクセス元IP</th>
-                <th>遠隔操作</th>
-                <th>最終確認</th>
                 <th>更新</th>
-                <th>監視プロセス</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -86,21 +83,6 @@
             />
           </div>
           <div class="form-row">
-            <label for="remoteControlled">遠隔操作状態</label>
-            <select id="remoteControlled" name="remoteControlled">
-              <option value="">自動判定 / 未指定</option>
-              <option value="true">遠隔操作中</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label for="expectedProcesses">監視プロセス (カンマ区切り)</label>
-            <input
-              id="expectedProcesses"
-              name="expectedProcesses"
-              placeholder="例: mstsc.exe, custom-tool.exe"
-            />
-          </div>
-          <div class="form-row">
             <label for="notes">備考</label>
             <textarea id="notes" name="notes" rows="2"></textarea>
           </div>
@@ -125,8 +107,7 @@
     "username": "tanaka",
     "remoteUser": "corp\\administrator",
     "remoteHost": "192.168.100.50",
-    "remoteHostIpAddress": "198.51.100.23",
-    "expectedProcesses": ["mstsc.exe", "custom-tool.exe"]
+    "remoteHostIpAddress": "198.51.100.23"
   }'</code></pre>
         <p>
           自動ハートビートのエンドポイントでは <code>runningProcesses</code> や

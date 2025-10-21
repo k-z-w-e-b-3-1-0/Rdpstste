@@ -140,55 +140,6 @@ button.secondary {
   background: rgba(231, 76, 60, 0.08);
 }
 
-.process-cell {
-  min-width: 200px;
-}
-
-.process-status-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.process-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-  padding: 0.1rem 0;
-}
-
-.process-row .indicator {
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.process-row.running .indicator {
-  background: var(--connected);
-}
-
-.process-row.stopped .indicator {
-  background: var(--disconnected);
-}
-
-.process-row .name {
-  font-weight: 600;
-}
-
-.process-row .state {
-  color: var(--muted);
-}
-
-.process-row.running .state {
-  color: var(--connected);
-}
-
-.process-row.stopped .state {
-  color: var(--disconnected);
-}
-
 .badge { 
   display: inline-block; 
   border-radius: 999px; 
@@ -227,14 +178,6 @@ button.secondary {
   background: var(--disconnected);
 }
 
-.badge.remote {
-  background: #8e44ad;
-}
-
-.badge.unknown {
-  background: var(--muted);
-  color: #fff;
-}
 
 .muted {
   color: var(--muted);
