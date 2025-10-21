@@ -111,7 +111,7 @@ if ($state -and -not [string]::IsNullOrWhiteSpace($state.lastHeartbeatAt)) {
     }
 }
 
-if ($state -and ($state.ContainsKey('lastIdleSeconds')) -and $null -ne $state['lastIdleSeconds']) {
+if ($state -and ($state.Contains('lastIdleSeconds')) -and $null -ne $state['lastIdleSeconds']) {
     $payload.lastObservedIdleSeconds = [Math]::Round([double]$state['lastIdleSeconds'], 0)
 }
 

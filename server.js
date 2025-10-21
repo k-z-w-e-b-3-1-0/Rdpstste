@@ -1033,6 +1033,7 @@ const server = http.createServer(async (req, res) => {
           targetSession.lastUpdated = timestamp;
           targetSession.lastSeen = timestamp;
           targetSession.endedAt = timestamp;
+          targetSession.remoteControlled = null;
           if (disconnectReason) {
             targetSession.disconnectReason = disconnectReason;
           }

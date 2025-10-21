@@ -62,7 +62,7 @@ set "REMOTE_HOST_FROM_FILE="
 set "REMOTE_HOST_IP_FROM_FILE="
 set "SESSION_NAME="
 set "SESSION_NAME_FROM_FILE="
-set "REMOTE_CONTROLLED="
+set "REMOTE_CONTROLLED=true"
 set "REMOTE_CONTROLLED_FROM_FILE="
 
 if exist "%REMOTE_SESSION_FILE%" if defined POWERSHELL_CMD (
@@ -97,12 +97,11 @@ if defined SESSION_NAME_FROM_FILE (
 
 if defined REMOTE_CONTROLLED_FROM_FILE (
     set "REMOTE_CONTROLLED=!REMOTE_CONTROLLED_FROM_FILE!"
-) else if defined SESSION_NAME (
-    set "PREFIX=!SESSION_NAME:~0,7!"
-    if /I "!PREFIX!"=="RDP-Tcp" (
-        set "REMOTE_CONTROLLED=true"
-    )
 )
+
+rem session_notify.bat is only executed while a user session is active, so the
+rem monitoring UI should always indicate a remote control session.
+set "REMOTE_CONTROLLED=true"
 
 if defined POWERSHELL_CMD if not defined REMOTE_HOST_IP (
     for /f "usebackq tokens=*" %%A in (`%POWERSHELL_CMD% -NoProfile -Command "try { $conn = Get-NetTCPConnection -State Established -LocalPort 3389 | Select-Object -First 1; if ($conn -and $conn.RemoteAddress) { $candidate = $conn.RemoteAddress.ToString(); $parsed = $null; if ([System.Net.IPAddress]::TryParse($candidate, [ref]$parsed)) { $parsed.ToString() } } } catch { }"`) do (
