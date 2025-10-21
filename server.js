@@ -10,13 +10,43 @@ const DATA_PATH = path.join(DATA_DIR, 'sessions.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
+const cliOptions = parseCommandLineArgs(process.argv.slice(2));
+const slackWebhookUrl = cliOptions.slackWebhookUrl ?? process.env.SLACK_WEBHOOK_URL;
+
 let slackWebhook = null;
-if (process.env.SLACK_WEBHOOK_URL) {
+if (slackWebhookUrl) {
   try {
-    slackWebhook = new URL(process.env.SLACK_WEBHOOK_URL);
+    slackWebhook = new URL(slackWebhookUrl);
   } catch (error) {
     console.error('Invalid Slack webhook URL provided; disabling Slack notifications.', error.message);
   }
+}
+
+function parseCommandLineArgs(args) {
+  const options = {};
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg.startsWith('--slack-webhook-url=')) {
+      options.slackWebhookUrl = arg.slice('--slack-webhook-url='.length);
+      continue;
+    }
+
+    if (arg.startsWith('--slack-webhook=')) {
+      options.slackWebhookUrl = arg.slice('--slack-webhook='.length);
+      continue;
+    }
+
+    if (arg === '--slack-webhook-url' || arg === '--slack-webhook') {
+      const value = args[index + 1];
+      if (value && !value.startsWith('-')) {
+        options.slackWebhookUrl = value;
+        index += 1;
+      }
+      continue;
+    }
+  }
+  return options;
 }
 
 function normalizeBoolean(value) {
