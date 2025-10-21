@@ -268,28 +268,6 @@ function formatDateTime(isoString) {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 }
 
-function formatRelative(isoString) {
-  if (!isoString) return '-';
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  if (Number.isNaN(diffMs)) return '-';
-  const diffMinutes = Math.round(diffMs / 60000);
-  if (diffMinutes < 1) return '1分未満前';
-  if (diffMinutes < 60) return `${diffMinutes}分前`;
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}時間前`;
-  const diffDays = Math.round(diffHours / 24);
-  return `${diffDays}日前`;
-}
-
-function renderRemoteControlState(value) {
-  if (value === true) {
-    return '<span class="badge remote">遠隔操作中</span>';
-  }
-  return '<span class="badge unknown">未判定</span>';
-}
-
 function renderRemoteHostCell(session) {
   const ip = session.remoteHostIpAddress ? escapeHtml(session.remoteHostIpAddress) : '';
   const host = session.remoteHost ? escapeHtml(session.remoteHost) : '';
@@ -344,8 +322,6 @@ function renderSessions(sessions) {
     .forEach(session => {
       const tr = document.createElement('tr');
       tr.classList.add(`status-${session.status}`);
-      const processCellHtml = renderProcessCell(session);
-      const remoteControlHtml = renderRemoteControlState(session.remoteControlled);
       const remoteHostHtml = renderRemoteHostCell(session);
       const statusBadgeHtml = `<span class="badge ${session.status}">${
         session.status === 'connected' ? '接続中' : '切断'
@@ -360,13 +336,7 @@ function renderSessions(sessions) {
         <td>${escapeHtml(session.ipAddress ?? '')}</td>
         <td>${escapeHtml(session.username ?? '')}</td>
         <td>${remoteHostHtml}</td>
-        <td>${remoteControlHtml}</td>
-        <td>
-          <div>${formatRelative(session.lastSeen)}</div>
-          <small class="muted">${formatDateTime(session.lastSeen)}</small>
-        </td>
         <td>${formatDateTime(session.lastUpdated)}</td>
-        <td class="process-cell">${processCellHtml}</td>
         <td class="actions"></td>
       `;
 
@@ -480,80 +450,6 @@ function renderSessions(sessions) {
   disconnectedCountEl.textContent = disconnectedCount;
 }
 
-function normalizeProcessNamesInput(value) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-  const unique = new Set();
-  String(value)
-    .split(',')
-    .map(name => name.trim())
-    .filter(name => name.length > 0)
-    .forEach(name => unique.add(name));
-  return Array.from(unique);
-}
-
-function normalizeBooleanInput(value) {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (typeof value === 'boolean') return value;
-  const normalized = String(value).trim().toLowerCase();
-  if (!normalized) return undefined;
-  if (['true', '1', 'yes', 'y', 'on', 'remote', 'rdp'].includes(normalized)) return true;
-  if (['false', '0', 'no', 'n', 'off', 'local', 'console'].includes(normalized)) return null;
-  if (['null', 'unknown', 'unset'].includes(normalized)) return null;
-  return undefined;
-}
-
-function renderProcessCell(session) {
-  const statuses = Array.isArray(session.processStatuses) ? session.processStatuses : [];
-  const expected = Array.isArray(session.expectedProcesses) ? session.expectedProcesses : [];
-  if (statuses.length === 0) {
-    if (expected.length === 0) {
-      return '<span class="muted">-</span>';
-    }
-    return `
-      <div class="muted">未報告</div>
-      <small class="muted">監視対象: ${escapeHtml(expected.join(', '))}</small>
-    `;
-  }
-  const rows = statuses
-    .map(status => {
-      const isRunning = Boolean(status.running);
-      const name = escapeHtml(status.name ?? '');
-      const label = isRunning ? '起動中' : '停止';
-      return `
-        <div class="process-row ${isRunning ? 'running' : 'stopped'}">
-          <span class="indicator"></span>
-          <span class="name">${name}</span>
-          <span class="state">${label}</span>
-        </div>
-      `;
-    })
-    .join('');
-  let lastCheckedText = '';
-  const timestamps = statuses
-    .map(status => {
-      if (!status.lastChecked) return null;
-      const parsed = new Date(status.lastChecked);
-      if (Number.isNaN(parsed.getTime())) return null;
-      return parsed.toISOString();
-    })
-    .filter(Boolean)
-    .sort()
-    .reverse();
-  if (timestamps.length > 0) {
-    lastCheckedText = `<small class="muted">${formatDateTime(timestamps[0])} 更新</small>`;
-  }
-  const expectedText = expected.length
-    ? `<small class="muted">監視対象: ${escapeHtml(expected.join(', '))}</small>`
-    : '';
-  return `
-    <div class="process-status-list">${rows}</div>
-    ${lastCheckedText}
-    ${expectedText}
-  `;
-}
-
 async function loadSessions() {
   refreshButton.disabled = true;
   try {
@@ -570,17 +466,6 @@ createForm.addEventListener('submit', async event => {
   event.preventDefault();
   const formData = new FormData(createForm);
   const payload = Object.fromEntries(formData.entries());
-  if (payload.expectedProcesses) {
-    payload.expectedProcesses = normalizeProcessNamesInput(payload.expectedProcesses);
-  }
-  if (payload.remoteControlled !== undefined) {
-    const normalizedRemote = normalizeBooleanInput(payload.remoteControlled);
-    if (normalizedRemote === undefined) {
-      delete payload.remoteControlled;
-    } else {
-      payload.remoteControlled = normalizedRemote;
-    }
-  }
   refreshButton.disabled = true;
   try {
     await request(`${API_BASE}/api/sessions`, {

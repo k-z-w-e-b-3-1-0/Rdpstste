@@ -960,23 +960,60 @@ const server = http.createServer(async (req, res) => {
 
         sessionEvents.push(event);
 
-        const targetSession = findSessionForEvent(sessions, { sessionId, resourceId });
-        if (targetSession) {
-          if (sessionId) {
-            targetSession.externalSessionId = sessionId;
-          }
-          if (userId && !targetSession.username) {
-            targetSession.username = userId;
-          }
-          targetSession.status = 'connected';
-          targetSession.lastUpdated = timestamp;
-          targetSession.lastSeen = timestamp;
-          targetSession.startedAt = timestamp;
-          targetSession.endedAt = null;
-          targetSession.disconnectReason = '';
+        let targetSession = findSessionForEvent(sessions, { sessionId, resourceId });
+        const previousStatus = targetSession ? targetSession.status : null;
+        let createdSession = false;
+        if (!targetSession) {
+          targetSession = {
+            id: randomUUID(),
+            hostname: resourceId || '',
+            ipAddress: '',
+            username: userId || '',
+            remoteUser: '',
+            remoteHost: '',
+            remoteHostIpAddress: '',
+            remoteControlled: null,
+            status: 'connected',
+            lastUpdated: timestamp,
+            lastSeen: timestamp,
+            startedAt: timestamp,
+            endedAt: null,
+            disconnectReason: '',
+            notes: '',
+            expectedProcesses: [],
+            processStatuses: [],
+          };
+          sessions.push(targetSession);
+          createdSession = true;
         }
 
+        if (sessionId) {
+          targetSession.externalSessionId = sessionId;
+        }
+        if (resourceId && !targetSession.hostname) {
+          targetSession.hostname = resourceId;
+        }
+        if (userId && !targetSession.username) {
+          targetSession.username = userId;
+        }
+        targetSession.status = 'connected';
+        targetSession.lastUpdated = timestamp;
+        targetSession.lastSeen = timestamp;
+        targetSession.startedAt = timestamp;
+        targetSession.endedAt = null;
+        targetSession.disconnectReason = '';
+
         saveSessions(sessions, sessionEvents);
+
+        let eventType = null;
+        if (createdSession) {
+          eventType = 'created';
+        } else if (previousStatus !== 'connected') {
+          eventType = 'connected';
+        }
+        if (eventType) {
+          await notifySessionEvent(eventType, targetSession, { trigger: 'session-start-event' });
+        }
         sendJSON(res, 202, { accepted: true, eventId: event.id });
         return;
       }
