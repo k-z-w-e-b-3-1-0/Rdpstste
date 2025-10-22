@@ -3,12 +3,27 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const os = require('os');
 const { randomUUID } = require('crypto');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_PATH = path.join(DATA_DIR, 'sessions.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+
+const DASHBOARD_PROTOCOL_ENV = normalizeProtocol(
+  process.env.DASHBOARD_PUBLIC_PROTOCOL || process.env.PUBLIC_DASHBOARD_PROTOCOL
+);
+const DEFAULT_PROTOCOL = DASHBOARD_PROTOCOL_ENV || 'http';
+const DASHBOARD_PORT_ENV = parsePort(
+  process.env.DASHBOARD_PUBLIC_PORT || process.env.PUBLIC_DASHBOARD_PORT
+);
+const DEFAULT_PUBLIC_PORT = DASHBOARD_PORT_ENV || PORT;
+const CONFIGURED_DASHBOARD_URL = sanitizeDashboardUrl(
+  process.env.DASHBOARD_PUBLIC_URL || process.env.PUBLIC_DASHBOARD_URL,
+  DEFAULT_PROTOCOL
+);
+const DEFAULT_EXTERNAL_HOST = detectPrimaryExternalAddress();
 
 let slackWebhook = null;
 if (process.env.SLACK_WEBHOOK_URL) {
@@ -160,6 +175,399 @@ function postSlackMessage(payload) {
   });
 }
 
+function normalizeProtocol(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const text = String(value).trim().toLowerCase();
+  if (!text) {
+    return null;
+  }
+  if (text === 'http' || text === 'https') {
+    return text;
+  }
+  if (text === 'http:' || text === 'https:') {
+    return text.slice(0, -1);
+  }
+  return null;
+}
+
+function parsePort(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const numeric = Number(value);
+  if (Number.isInteger(numeric) && numeric > 0 && numeric <= 65535) {
+    return numeric;
+  }
+  return null;
+}
+
+function isLoopbackHost(hostname) {
+  if (!hostname) {
+    return true;
+  }
+  const normalized = String(hostname)
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  if (normalized === 'localhost' || normalized === '0.0.0.0') {
+    return true;
+  }
+  if (normalized === '::1' || normalized === '::') {
+    return true;
+  }
+  if (normalized.startsWith('127.')) {
+    return true;
+  }
+  if (normalized.startsWith('::ffff:127.')) {
+    return true;
+  }
+  return false;
+}
+
+function parseHostHeader(value) {
+  if (!value) {
+    return { hostname: null, port: null };
+  }
+  const text = String(value).trim();
+  if (!text) {
+    return { hostname: null, port: null };
+  }
+  if (text.startsWith('[')) {
+    const closingIndex = text.indexOf(']');
+    if (closingIndex !== -1) {
+      const host = text.slice(1, closingIndex);
+      const remainder = text.slice(closingIndex + 1);
+      const port = remainder.startsWith(':') ? parsePort(remainder.slice(1)) : null;
+      return { hostname: host || null, port };
+    }
+    return { hostname: text, port: null };
+  }
+  const parts = text.split(':');
+  if (parts.length === 2 && /^\d+$/.test(parts[1])) {
+    return { hostname: parts[0], port: parsePort(parts[1]) };
+  }
+  return { hostname: text, port: null };
+}
+
+function formatHostForUrl(hostname) {
+  if (!hostname) {
+    return '';
+  }
+  let normalized = hostname;
+  const zoneIndex = normalized.indexOf('%');
+  if (zoneIndex !== -1) {
+    normalized = normalized.slice(0, zoneIndex);
+  }
+  if (normalized.includes(':') && !normalized.startsWith('[')) {
+    return `[${normalized}]`;
+  }
+  return normalized;
+}
+
+function buildUrlFromParts(protocolCandidate, hostname, portCandidate) {
+  if (!hostname) {
+    return null;
+  }
+  const normalizedProtocol = normalizeProtocol(protocolCandidate) || DEFAULT_PROTOCOL;
+  const parsedPort = parsePort(portCandidate);
+  const effectivePort = parsedPort || DEFAULT_PUBLIC_PORT;
+  const omitPort =
+    !effectivePort ||
+    (normalizedProtocol === 'http' && effectivePort === 80) ||
+    (normalizedProtocol === 'https' && effectivePort === 443);
+  const portSegment = omitPort ? '' : `:${effectivePort}`;
+  const formattedHost = formatHostForUrl(hostname);
+  return `${normalizedProtocol}://${formattedHost}${portSegment}/`;
+}
+
+function sanitizeDashboardUrl(candidate, defaultProtocol = DEFAULT_PROTOCOL) {
+  if (!candidate) {
+    return null;
+  }
+  const raw = String(candidate).trim();
+  if (!raw) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch (error) {
+    try {
+      parsed = new URL(`${defaultProtocol}://${raw}`);
+    } catch (nestedError) {
+      return null;
+    }
+  }
+  if (!parsed.hostname || isLoopbackHost(parsed.hostname)) {
+    return null;
+  }
+  const protocol = normalizeProtocol(parsed.protocol) || normalizeProtocol(defaultProtocol) || 'http';
+  const port = parsePort(parsed.port);
+  let pathname = parsed.pathname || '/';
+  if (!pathname.startsWith('/')) {
+    pathname = `/${pathname}`;
+  }
+  if (pathname !== '/' && !pathname.endsWith('/')) {
+    pathname = `${pathname}/`;
+  }
+  const omitPort =
+    !port ||
+    (protocol === 'http' && port === 80) ||
+    (protocol === 'https' && port === 443);
+  const portSegment = omitPort ? '' : `:${port}`;
+  const formattedHost = formatHostForUrl(parsed.hostname);
+  return `${protocol}://${formattedHost}${portSegment}${pathname}`;
+}
+
+function detectPrimaryExternalAddress() {
+  const interfaces = os.networkInterfaces();
+  const ipv4Candidates = [];
+  for (const key of Object.keys(interfaces)) {
+    const entries = interfaces[key];
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+    entries.forEach(entry => {
+      if (!entry || entry.internal) {
+        return;
+      }
+      if (entry.family === 'IPv4') {
+        ipv4Candidates.push(entry.address);
+      }
+    });
+  }
+  if (ipv4Candidates.length > 0) {
+    return ipv4Candidates[0];
+  }
+  for (const key of Object.keys(interfaces)) {
+    const entries = interfaces[key];
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry || entry.internal) {
+        continue;
+      }
+      if (entry.family === 'IPv6') {
+        return entry.address;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveDashboardUrl(options = {}) {
+  const protocol = normalizeProtocol(options.requestProtocol) || DEFAULT_PROTOCOL;
+  const candidates = [];
+  if (options.dashboardUrl) {
+    candidates.push(options.dashboardUrl);
+  }
+  if (CONFIGURED_DASHBOARD_URL) {
+    candidates.push(CONFIGURED_DASHBOARD_URL);
+  }
+  if (options.requestHostHeader) {
+    const { hostname, port } = parseHostHeader(options.requestHostHeader);
+    if (hostname && !isLoopbackHost(hostname)) {
+      const candidate = buildUrlFromParts(protocol, hostname, port || DEFAULT_PUBLIC_PORT);
+      if (candidate) {
+        candidates.push(candidate);
+      }
+    }
+  }
+  if (DEFAULT_EXTERNAL_HOST && !isLoopbackHost(DEFAULT_EXTERNAL_HOST)) {
+    const candidate = buildUrlFromParts(protocol, DEFAULT_EXTERNAL_HOST, DEFAULT_PUBLIC_PORT);
+    if (candidate) {
+      candidates.push(candidate);
+    }
+  }
+  for (const candidate of candidates) {
+    const sanitized = sanitizeDashboardUrl(candidate, protocol);
+    if (sanitized) {
+      return sanitized;
+    }
+  }
+  return null;
+}
+
+function getFirstHeaderValue(headers, name) {
+  if (!headers) {
+    return null;
+  }
+  const value = headers[name];
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0 ? String(value[0]) : null;
+  }
+  return String(value);
+}
+
+function getRequestHostHeader(req) {
+  const forwarded = getFirstHeaderValue(req.headers, 'x-forwarded-host');
+  if (forwarded) {
+    const primary = forwarded.split(',')[0].trim();
+    if (primary) {
+      return primary;
+    }
+  }
+  const host = getFirstHeaderValue(req.headers, 'host');
+  return host ? host.trim() : '';
+}
+
+function getRequestProtocol(req) {
+  const forwardedProto = getFirstHeaderValue(req.headers, 'x-forwarded-proto');
+  if (forwardedProto) {
+    const primary = forwardedProto.split(',')[0].trim().toLowerCase();
+    const normalized = normalizeProtocol(primary);
+    if (normalized) {
+      return normalized;
+    }
+    if (primary) {
+      return primary;
+    }
+  }
+  if (req.socket && req.socket.encrypted) {
+    return 'https';
+  }
+  return DEFAULT_PROTOCOL;
+}
+
+function extractRequesterUser(req) {
+  const headerNames = [
+    'x-remote-user',
+    'x-forwarded-user',
+    'remote-user',
+    'x-authenticated-user',
+    'x-authenticated-userid',
+    'x-authenticated-username',
+    'x-user',
+    'x-forwarded-preferred-username',
+    'x-forwarded-email',
+  ];
+  for (const headerName of headerNames) {
+    const value = getFirstHeaderValue(req.headers, headerName);
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  const authorization = getFirstHeaderValue(req.headers, 'authorization');
+  if (authorization && authorization.startsWith('Basic ')) {
+    const encoded = authorization.slice(6).trim();
+    if (encoded) {
+      try {
+        const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
+        const colonIndex = decoded.indexOf(':');
+        if (colonIndex > 0) {
+          const username = decoded.slice(0, colonIndex).trim();
+          if (username) {
+            return username;
+          }
+        }
+      } catch (error) {
+        // Basic 認証のデコードに失敗した場合は利用者名を取得しない
+      }
+    }
+  }
+  return null;
+}
+
+function buildRequesterInfo(req) {
+  const host = getClientIp(req);
+  const user = extractRequesterUser(req);
+  if (!host && !user) {
+    return null;
+  }
+  return {
+    host: host || null,
+    user: user || null,
+  };
+}
+
+function formatUsageIntentRequester(requester) {
+  if (!requester) {
+    return null;
+  }
+  const parts = [];
+  if (requester.user) {
+    parts.push(requester.user);
+  }
+  if (requester.host) {
+    parts.push(requester.host);
+  }
+  if (parts.length === 0) {
+    return null;
+  }
+  return `利用希望者: ${parts.join(' @ ')}`;
+}
+
+function buildNotificationContext(req, baseContext = {}) {
+  const requestHostHeader = getRequestHostHeader(req);
+  const requestProtocol = getRequestProtocol(req);
+  const requester = buildRequesterInfo(req);
+  const context = { ...baseContext };
+  if (!context.requestHostHeader && requestHostHeader) {
+    context.requestHostHeader = requestHostHeader;
+  }
+  if (!context.requestProtocol && requestProtocol) {
+    context.requestProtocol = requestProtocol;
+  }
+  if (!context.requester && requester) {
+    context.requester = requester;
+  }
+  const dashboardUrl = resolveDashboardUrl({
+    dashboardUrl: baseContext.dashboardUrl,
+    requestHostHeader,
+    requestProtocol,
+  });
+  if (dashboardUrl) {
+    context.dashboardUrl = dashboardUrl;
+  }
+  return context;
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return null;
+  }
+  const rounded = Math.round(seconds);
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const secs = rounded % 60;
+  const parts = [];
+  if (hours > 0) {
+    parts.push(`${hours}時間`);
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes}分`);
+  }
+  if (secs > 0 || parts.length === 0) {
+    parts.push(`${secs}秒`);
+  }
+  return parts.join('');
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return null;
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const formatted = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+  return `${formatted}${units[unitIndex]}`;
+}
+
 async function notifySessionEvent(eventType, session, context = {}) {
   if (!slackWebhook) {
     return;
@@ -175,6 +583,55 @@ async function notifySessionEvent(eventType, session, context = {}) {
   } else if (eventType === 'usage-intent') {
     headline = '🧑‍💻 端末の利用予定が共有されました';
     extraLines.push('アクション: これから端末を利用予定です');
+    const requesterLine = formatUsageIntentRequester(context.requester);
+    if (requesterLine) {
+      extraLines.push(requesterLine);
+    }
+  } else if (eventType === 'ended') {
+    headline = '🔚 RDP セッションの終了を検知しました';
+    extraLines.push('アクション: 端末の利用が終了しました');
+    if (typeof context.sessionDurationSeconds === 'number') {
+      const formatted = formatDuration(context.sessionDurationSeconds);
+      if (formatted) {
+        extraLines.push(`利用時間: ${formatted}`);
+      }
+    }
+    if (typeof context.lastIdleSeconds === 'number') {
+      const formatted = formatDuration(context.lastIdleSeconds);
+      if (formatted) {
+        extraLines.push(`最終入力からの経過: ${formatted}`);
+      }
+    }
+    if (typeof context.secondsSinceLastHeartbeat === 'number') {
+      const formatted = formatDuration(context.secondsSinceLastHeartbeat);
+      if (formatted) {
+        extraLines.push(`最終ハートビートからの経過: ${formatted}`);
+      }
+    }
+    if (typeof context.resourceMetrics === 'object' && context.resourceMetrics) {
+      const metricsLines = [];
+      if (typeof context.resourceMetrics.cpuTimeSeconds === 'number') {
+        const formatted = formatDuration(context.resourceMetrics.cpuTimeSeconds);
+        if (formatted) {
+          metricsLines.push(`CPU時間 ${formatted}`);
+        }
+      }
+      if (typeof context.resourceMetrics.workingSetBytes === 'number') {
+        const formatted = formatBytes(context.resourceMetrics.workingSetBytes);
+        if (formatted) {
+          metricsLines.push(`メモリ使用量 ${formatted}`);
+        }
+      }
+      if (typeof context.resourceMetrics.processCount === 'number') {
+        metricsLines.push(`プロセス数 ${context.resourceMetrics.processCount}`);
+      }
+      if (metricsLines.length > 0) {
+        extraLines.push(`終了時のリソース状況: ${metricsLines.join(' / ')}`);
+      }
+    }
+    if (context.disconnectReason) {
+      extraLines.push(`切断理由: ${context.disconnectReason}`);
+    }
   }
 
   if (session.remoteControlled === true) {
@@ -184,17 +641,24 @@ async function notifySessionEvent(eventType, session, context = {}) {
   const lines = [
     headline,
     `端末: ${session.hostname || '(名称未設定)'} (${session.ipAddress || 'IP不明'})`,
-    session.username ? `ローカルユーザー: ${session.username}` : '',
-    session.remoteUser ? `リモートユーザー: ${session.remoteUser}` : '',
     session.remoteHostIpAddress ? `接続元IP: ${session.remoteHostIpAddress}` : '',
     session.remoteHost ? `接続元ホスト: ${session.remoteHost}` : '',
     session.notes ? `備考: ${session.notes}` : '',
     ...extraLines,
     context.trigger ? `トリガー: ${context.trigger}` : '',
-  ].filter(Boolean);
+  ];
+
+  const dashboardUrl = resolveDashboardUrl({
+    dashboardUrl: context.dashboardUrl,
+    requestHostHeader: context.requestHostHeader,
+    requestProtocol: context.requestProtocol,
+  });
+  if (dashboardUrl) {
+    lines.push(`RDP監視ダッシュボード: ${dashboardUrl}`);
+  }
 
   try {
-    await postSlackMessage({ text: lines.join('\n') });
+    await postSlackMessage({ text: lines.filter(Boolean).join('\n') });
   } catch (error) {
     console.error('Failed to send Slack notification', error);
   }
@@ -713,7 +1177,11 @@ const server = http.createServer(async (req, res) => {
         };
         sessions.push(session);
         saveSessions(sessions);
-        await notifySessionEvent('created', session, { trigger: 'manual-create' });
+        await notifySessionEvent(
+          'created',
+          session,
+          buildNotificationContext(req, { trigger: 'manual-create' })
+        );
         sendJSON(res, 201, { session });
         return;
       }
@@ -898,7 +1366,11 @@ const server = http.createServer(async (req, res) => {
           eventType = 'connected';
         }
         if (eventType) {
-          await notifySessionEvent(eventType, session, { trigger: 'auto-heartbeat' });
+          await notifySessionEvent(
+            eventType,
+            session,
+            buildNotificationContext(req, { trigger: 'auto-heartbeat' })
+          );
         }
         sendJSON(res, 200, { session });
         return;
@@ -1012,7 +1484,11 @@ const server = http.createServer(async (req, res) => {
           eventType = 'connected';
         }
         if (eventType) {
-          await notifySessionEvent(eventType, targetSession, { trigger: 'session-start-event' });
+          await notifySessionEvent(
+            eventType,
+            targetSession,
+            buildNotificationContext(req, { trigger: 'session-start-event' })
+          );
         }
         sendJSON(res, 202, { accepted: true, eventId: event.id });
         return;
@@ -1065,7 +1541,9 @@ const server = http.createServer(async (req, res) => {
         sessionEvents.push(event);
 
         const targetSession = findSessionForEvent(sessions, { sessionId, resourceId });
+        let previousRemoteControlled = null;
         if (targetSession) {
+          previousRemoteControlled = targetSession.remoteControlled;
           targetSession.status = 'disconnected';
           targetSession.lastUpdated = timestamp;
           targetSession.lastSeen = timestamp;
@@ -1084,6 +1562,21 @@ const server = http.createServer(async (req, res) => {
         }
 
         saveSessions(sessions, sessionEvents);
+        if (targetSession) {
+          const sessionForNotification = {
+            ...targetSession,
+            remoteControlled: previousRemoteControlled,
+          };
+          const notificationContext = buildNotificationContext(req, {
+            trigger: 'session-end-event',
+            disconnectReason,
+            sessionDurationSeconds,
+            secondsSinceLastHeartbeat,
+            lastIdleSeconds,
+            resourceMetrics,
+          });
+          await notifySessionEvent('ended', sessionForNotification, notificationContext);
+        }
         sendJSON(res, 200, { accepted: true, eventId: event.id });
         return;
       }
@@ -1200,7 +1693,11 @@ const server = http.createServer(async (req, res) => {
               eventType = 'connected';
             }
             if (eventType) {
-              await notifySessionEvent(eventType, session, { trigger: 'manual-update' });
+              await notifySessionEvent(
+                eventType,
+                session,
+                buildNotificationContext(req, { trigger: 'manual-update' })
+              );
             }
           }
           sendJSON(res, 200, { session });
@@ -1229,7 +1726,11 @@ const server = http.createServer(async (req, res) => {
           session.lastUpdated = new Date().toISOString();
           sessions[index] = session;
           saveSessions(sessions);
-          await notifySessionEvent('usage-intent', session, { trigger: 'manual-announce' });
+          await notifySessionEvent(
+            'usage-intent',
+            session,
+            buildNotificationContext(req, { trigger: 'manual-announce' })
+          );
           sendJSON(res, 200, { session, slackEnabled: Boolean(slackWebhook) });
           return;
         }
