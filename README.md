@@ -163,8 +163,8 @@ Invoke-WebRequest -UseBasicParsing \
 
 リモートデスクトップ経由でログオンした直後に接続元ホスト名や IP アドレス、セッション名、遠隔操作フラグ (`remoteControlled`) を記録しておくと、イベント トリガーで `session_notify` を送信する際にも正しい値を引き継げます。以下のいずれかをログオン スクリプトとして登録し、ユーザー セッションで実行してください。
 
-- PowerShell 版: `scripts/save_remote_endpoint.ps1`
-- バッチ ファイル版: `scripts/save_remote_endpoint.bat`
+- PowerShell 版: `scripts/endpoint/save_remote_endpoint.ps1`
+- バッチ ファイル版: `scripts/endpoint/save_remote_endpoint.bat`
 
 どちらも既定では `%ProgramData%\Rdpstste\remote-session.json` に最新情報を保存し、`session_notify.bat` / `session_notify.ps1` はこのファイルが存在する場合に内容を読み取ってリクエストに含めます。PowerShell 版を直接呼び出す場合は次のように実行します。
 
