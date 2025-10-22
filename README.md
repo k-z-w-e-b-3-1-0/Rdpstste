@@ -181,7 +181,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\path\to\scripts\save
 
 ### Slack 通知
 
-環境変数 `SLACK_WEBHOOK_URL` に Incoming Webhook の URL を設定すると、以下のタイミングで Slack に通知が送信されます。
+環境変数 `SLACK_WEBHOOK_URL` または起動引数 `--slack-webhook-url <Webhook URL>` に Incoming Webhook の URL を設定すると、以下のタイミングで Slack に通知が送信されます。
 
 - セッションが新規登録されたとき (自動・手動いずれも)
 - セッションの状態が「接続中」に遷移したとき
