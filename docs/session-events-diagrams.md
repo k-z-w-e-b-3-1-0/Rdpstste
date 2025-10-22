@@ -43,7 +43,7 @@ graph LR
     API -- "更新結果" --> Browser
 ```
 
-Mermaid 記法のソースは [`docs/diagrams/session-events-deployment.mmd`](./diagrams/session-events-deployment.mmd) に保存しています。図内で参照しているスクリプトやエンドポイントは、`scripts/` ディレクトリの PowerShell / バッチ ファイルと [`server.js`](../server.js) の REST API 実装に対応しています。`session_notify` はログオンまたはリモートセッション確立のイベントから実行し、`session_end_event` はログオフやセッション切断の直後に呼び出して終了タイムスタンプを記録します。
+Mermaid 記法のソースは [`docs/diagrams/session-events-deployment.mmd`](./diagrams/session-events-deployment.mmd) に保存しています。図内で参照しているスクリプトやエンドポイントは、監視対象端末で動かす `scripts/endpoint/` ディレクトリの PowerShell / バッチ ファイルと、セットアップ用途の `scripts/setup/` 以下に用意した補助ツール、そして [`server.js`](../server.js) の REST API 実装に対応しています。`session_notify` はログオンまたはリモートセッション確立のイベントから実行し、`session_end_event` はログオフやセッション切断の直後に呼び出して終了タイムスタンプを記録します。
 
 ## シーケンス図 (Sequence Diagram)
 
