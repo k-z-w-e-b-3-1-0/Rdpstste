@@ -6,6 +6,44 @@ const connectedCountEl = document.getElementById('connected-count');
 const disconnectedCountEl = document.getElementById('disconnected-count');
 const refreshButton = document.getElementById('refresh-button');
 const createForm = document.getElementById('create-form');
+const messageDialog = document.getElementById('message-dialog');
+const messageDialogText = messageDialog ? messageDialog.querySelector('.dialog-message') : null;
+const messageDialogCloseButton = messageDialog
+  ? messageDialog.querySelector('[data-dialog-close]')
+  : null;
+
+let lastFocusedElement = null;
+
+function showMessageDialog(message) {
+  if (messageDialog && typeof messageDialog.showModal === 'function' && messageDialogText) {
+    lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (messageDialog.open) {
+      messageDialog.close();
+    }
+    messageDialogText.textContent = message;
+    messageDialog.showModal();
+    if (messageDialogCloseButton) {
+      messageDialogCloseButton.focus();
+    }
+  } else {
+    console.error('Dialog message:', message);
+  }
+}
+
+if (messageDialog) {
+  messageDialog.addEventListener('close', () => {
+    messageDialogText.textContent = '';
+    if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+      lastFocusedElement.focus();
+    }
+    lastFocusedElement = null;
+  });
+
+  messageDialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    messageDialog.close();
+  });
+}
 
 const announceEffect = window.p5
   ? new window.p5(p => {
@@ -357,7 +395,7 @@ function renderSessions(sessions) {
           });
           const slackEnabled = Boolean(result && result.slackEnabled);
           await loadSessions();
-          alert(
+          showMessageDialog(
             slackEnabled
               ? 'Slack に利用予定を通知しました。'
               : 'Slack Webhook が設定されていないため通知は送信されませんでした。'
@@ -366,7 +404,7 @@ function renderSessions(sessions) {
           if (error.status === 409) {
             await loadSessions();
           }
-          alert(`利用予定の通知に失敗しました: ${error.message}`);
+          showMessageDialog(`利用予定の通知に失敗しました: ${error.message}`);
         } finally {
           announceButton.disabled = false;
         }
@@ -387,7 +425,7 @@ function renderSessions(sessions) {
           if (error.status === 409) {
             await loadSessions();
           }
-          alert(`ハートビート送信に失敗しました: ${error.message}`);
+          showMessageDialog(`ハートビート送信に失敗しました: ${error.message}`);
         } finally {
           heartbeatButton.disabled = false;
         }
@@ -410,7 +448,7 @@ function renderSessions(sessions) {
           if (error.status === 409) {
             await loadSessions();
           }
-          alert(`状態変更に失敗しました: ${error.message}`);
+          showMessageDialog(`状態変更に失敗しました: ${error.message}`);
         } finally {
           toggleButton.disabled = false;
         }
@@ -433,7 +471,7 @@ function renderSessions(sessions) {
           if (error.status === 409) {
             await loadSessions();
           }
-          alert(`削除に失敗しました: ${error.message}`);
+          showMessageDialog(`削除に失敗しました: ${error.message}`);
         } finally {
           deleteButton.disabled = false;
         }
@@ -456,7 +494,7 @@ async function loadSessions() {
     const data = await request(`${API_BASE}/api/sessions`, { method: 'GET' });
     renderSessions(data.sessions ?? []);
   } catch (error) {
-    alert(`一覧の取得に失敗しました: ${error.message}`);
+    showMessageDialog(`一覧の取得に失敗しました: ${error.message}`);
   } finally {
     refreshButton.disabled = false;
   }
@@ -475,7 +513,7 @@ createForm.addEventListener('submit', async event => {
     createForm.reset();
     await loadSessions();
   } catch (error) {
-    alert(`登録に失敗しました: ${error.message}`);
+    showMessageDialog(`登録に失敗しました: ${error.message}`);
   } finally {
     refreshButton.disabled = false;
   }
