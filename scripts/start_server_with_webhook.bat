@@ -10,9 +10,17 @@ set "WEBHOOK_URL=%~1"
 shift
 
 set "SCRIPT_DIR=%~dp0"
-cd /d "%SCRIPT_DIR%.."
+for %%I in ("%SCRIPT_DIR%..") do set "PROJECT_ROOT=%%~fI"
+set "SERVER_JS=%PROJECT_ROOT%\server.js"
 
-node server.js --webhook "%WEBHOOK_URL%" %*
+if not exist "%SERVER_JS%" (
+    echo Could not find server.js in "%PROJECT_ROOT%".
+    exit /b 1
+)
+
+pushd "%PROJECT_ROOT%" >nul
+node "%SERVER_JS%" --webhook "%WEBHOOK_URL%" %*
 set "EXIT_CODE=%ERRORLEVEL%"
+popd >nul
 
 endlocal & exit /b %EXIT_CODE%

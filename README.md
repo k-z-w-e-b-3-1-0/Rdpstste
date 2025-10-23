@@ -38,6 +38,26 @@ npm start
 
 サーバーは既定で `http://localhost:3000` で待ち受けます。環境変数 `PORT` を設定するとポート番号を変更できます。
 
+### Slack Webhook を指定して起動する
+
+Slack 通知を有効にしたい場合は、`--webhook` オプション付きで `server.js` を起動してください。プロジェクト直下で次のように実行できます。
+
+```bash
+node server.js --webhook "https://hooks.slack.com/services/xxxx/yyyy/zzzz"
+```
+
+カレントディレクトリに依存せずに起動したい場合は、同梱のランチャースクリプトを利用すると安全です。
+
+```bash
+# npm script を使う場合
+npm run start:webhook -- "https://hooks.slack.com/services/xxxx/yyyy/zzzz"
+
+# 直接 Node.js で実行する場合
+node scripts/start_server_with_webhook.js "https://hooks.slack.com/services/xxxx/yyyy/zzzz"
+```
+
+Windows では `scripts\start_server_with_webhook.bat` も利用できます。どの方法でも Slack Webhook URL は第 1 引数に指定し、それ以降の引数はすべて `server.js` にそのまま渡されます。
+
 ## API
 
 | メソッド | エンドポイント | 説明 |
