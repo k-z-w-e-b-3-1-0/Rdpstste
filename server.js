@@ -10,6 +10,7 @@ const DATA_DIR = path.join(__dirname, 'data');
 const DATA_PATH = path.join(DATA_DIR, 'sessions.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+const commandLineOptions = parseCommandLineOptions(process.argv.slice(2));
 
 const DASHBOARD_PROTOCOL_ENV = normalizeProtocol(
   process.env.DASHBOARD_PUBLIC_PROTOCOL || process.env.PUBLIC_DASHBOARD_PROTOCOL
@@ -26,12 +27,71 @@ const CONFIGURED_DASHBOARD_URL = sanitizeDashboardUrl(
 const DEFAULT_EXTERNAL_HOST = detectPrimaryExternalAddress();
 
 let slackWebhook = null;
-if (process.env.SLACK_WEBHOOK_URL) {
+let slackWebhookValue = null;
+let slackWebhookSourceLabel = null;
+
+if (commandLineOptions.slackWebhookProvided) {
+  slackWebhookValue = commandLineOptions.slackWebhook;
+  slackWebhookSourceLabel = 'command line option';
+} else if (typeof process.env.SLACK_WEBHOOK_URL === 'string') {
+  slackWebhookValue = process.env.SLACK_WEBHOOK_URL;
+  slackWebhookSourceLabel = 'environment variable';
+}
+
+if (typeof slackWebhookValue === 'string') {
+  slackWebhookValue = slackWebhookValue.trim();
+}
+
+if (slackWebhookValue) {
   try {
-    slackWebhook = new URL(process.env.SLACK_WEBHOOK_URL);
+    slackWebhook = new URL(slackWebhookValue);
   } catch (error) {
-    console.error('Invalid Slack webhook URL provided; disabling Slack notifications.', error.message);
+    const messagePrefix = slackWebhookSourceLabel
+      ? `Invalid Slack webhook URL provided via ${slackWebhookSourceLabel}; disabling Slack notifications.`
+      : 'Invalid Slack webhook URL provided; disabling Slack notifications.';
+    console.error(messagePrefix, error.message);
   }
+} else if (commandLineOptions.slackWebhookProvided) {
+  console.warn(
+    'No Slack webhook URL provided with the --webhook option; Slack notifications are disabled.'
+  );
+}
+
+function parseCommandLineOptions(argv) {
+  const options = {
+    slackWebhook: undefined,
+    slackWebhookProvided: false,
+  };
+
+  if (!Array.isArray(argv)) {
+    return options;
+  }
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (typeof argument !== 'string' || !argument.startsWith('--')) {
+      continue;
+    }
+
+    const [flagName, inlineValue] = argument.split('=', 2);
+    if (flagName === '--slack-webhook' || flagName === '--webhook') {
+      options.slackWebhookProvided = true;
+      if (inlineValue !== undefined) {
+        options.slackWebhook = inlineValue;
+        continue;
+      }
+
+      const nextValue = argv[index + 1];
+      if (typeof nextValue === 'string' && !nextValue.startsWith('--')) {
+        options.slackWebhook = nextValue;
+        index += 1;
+      } else {
+        options.slackWebhook = '';
+      }
+    }
+  }
+
+  return options;
 }
 
 function normalizeBoolean(value) {

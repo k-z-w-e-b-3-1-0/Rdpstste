@@ -120,6 +120,16 @@
       <small>&copy; 2024 RDP Monitoring Dashboard</small>
     </footer>
 
+    <dialog id="message-dialog" aria-labelledby="message-dialog-title">
+      <form method="dialog" class="message-dialog__content" aria-live="polite">
+        <h3 id="message-dialog-title">お知らせ</h3>
+        <p class="dialog-message"></p>
+        <div class="dialog-actions">
+          <button type="submit" data-dialog-close>閉じる</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="app.js" defer></script>
   </body>
 </html>
