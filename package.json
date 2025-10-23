@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:webhook": "node scripts/start_server_with_webhook.js",
     "test": "node --check server.js"
   },
   "keywords": [],
