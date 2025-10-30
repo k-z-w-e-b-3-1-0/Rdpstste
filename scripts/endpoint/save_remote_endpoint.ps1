@@ -3,6 +3,49 @@ param(
     [int]$RdpPort = 3389
 )
 
+function Resolve-RemoteHostFromIp {
+    param(
+        [string]$IpAddress
+    )
+
+    if ([string]::IsNullOrWhiteSpace($IpAddress)) {
+        return $null
+    }
+
+    try {
+        $hostEntry = [System.Net.Dns]::GetHostEntry($IpAddress)
+        if ($hostEntry -and $hostEntry.HostName) {
+            return $hostEntry.HostName
+        }
+    } catch {
+        # Try Resolve-DnsName when available. Older Windows versions may not support it.
+        try {
+            $resolved = Resolve-DnsName -Name $IpAddress -ErrorAction Stop |
+                Select-Object -ExpandProperty NameHost -First 1
+            if ($resolved) {
+                return $resolved
+            }
+        } catch {
+            # Ignore lookup failures and fall back to IP address.
+        }
+    }
+
+    return $null
+}
+
+function Test-IsIpAddress {
+    param(
+        [string]$Candidate
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Candidate)) {
+        return $false
+    }
+
+    $parsed = $null
+    return [System.Net.IPAddress]::TryParse($Candidate, [ref]$parsed)
+}
+
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
@@ -71,6 +114,15 @@ try {
     }
 } catch {
     # Ignore failures; we will still write out whatever data we have.
+}
+
+if ($remoteHostIpAddress) {
+    $resolvedRemoteHost = Resolve-RemoteHostFromIp -IpAddress $remoteHostIpAddress
+    if ($resolvedRemoteHost) {
+        if (-not $remoteHost -or (Test-IsIpAddress -Candidate $remoteHost) -or $remoteHost -eq $remoteHostIpAddress) {
+            $remoteHost = $resolvedRemoteHost
+        }
+    }
 }
 
 $payload = [ordered]@{

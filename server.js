@@ -6,6 +6,8 @@ const url = require('url');
 const os = require('os');
 const { randomUUID } = require('crypto');
 
+const { triggerRedmineSyncFromEnv } = require('./lib/redmineSync');
+
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_PATH = path.join(DATA_DIR, 'sessions.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -1196,6 +1198,7 @@ const server = http.createServer(async (req, res) => {
       const sessions = loadSessions();
       if (method === 'GET' && pathname === '/api/sessions') {
         sendJSON(res, 200, { sessions });
+        triggerRedmineSyncFromEnv(sessions);
         return;
       }
 
