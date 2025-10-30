@@ -3,6 +3,48 @@ param(
     [string[]]$TargetProcesses = @("mstsc.exe", "custom-tool.exe")
 )
 
+function Resolve-RemoteHostFromIp {
+    param(
+        [string]$IpAddress
+    )
+
+    if ([string]::IsNullOrWhiteSpace($IpAddress)) {
+        return $null
+    }
+
+    try {
+        $hostEntry = [System.Net.Dns]::GetHostEntry($IpAddress)
+        if ($hostEntry -and $hostEntry.HostName) {
+            return $hostEntry.HostName
+        }
+    } catch {
+        try {
+            $resolved = Resolve-DnsName -Name $IpAddress -ErrorAction Stop |
+                Select-Object -ExpandProperty NameHost -First 1
+            if ($resolved) {
+                return $resolved
+            }
+        } catch {
+            # Ignore lookup failures.
+        }
+    }
+
+    return $null
+}
+
+function Test-IsIpAddress {
+    param(
+        [string]$Candidate
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Candidate)) {
+        return $false
+    }
+
+    $parsed = $null
+    return [System.Net.IPAddress]::TryParse($Candidate, [ref]$parsed)
+}
+
 $serverBase = $Server.TrimEnd('/')
 $endpoint = "$serverBase/api/sessions/auto-heartbeat"
 
@@ -54,6 +96,15 @@ try {
     }
 } catch {
     # 取得に失敗した場合は無視
+}
+
+if ($remoteHostIpAddress) {
+    $resolvedRemoteHost = Resolve-RemoteHostFromIp -IpAddress $remoteHostIpAddress
+    if ($resolvedRemoteHost) {
+        if (-not $remoteHost -or (Test-IsIpAddress -Candidate $remoteHost) -or $remoteHost -eq $remoteHostIpAddress) {
+            $remoteHost = $resolvedRemoteHost
+        }
+    }
 }
 
 if (-not $sessionName) {
